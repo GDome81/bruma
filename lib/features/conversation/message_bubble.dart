@@ -203,6 +203,18 @@ Widget _reactionsRow(
   );
 }
 
+/// Messaggio d'errore leggibile per i fallimenti di decifratura: quasi sempre
+/// significa che il contenuto è cifrato per un'ALTRA identità (es. hai aperto
+/// l'app su un nuovo dispositivo e rigenerato le chiavi).
+String _friendlyDecryptError(Object e) {
+  final s = e.toString().toLowerCase();
+  if (s.contains('sodium') || s.contains('decrypt') || s.contains('mac')) {
+    return 'Contenuto cifrato per un\'altra identità: '
+        'non apribile su questo dispositivo.';
+  }
+  return 'Errore: $e';
+}
+
 /// Vero se il testo è composto solo da emoji/simboli (niente lettere/cifre) ed
 /// è corto: in tal caso lo mostriamo in grande, come WhatsApp.
 bool _isEmojiOnly(String s) {
@@ -524,7 +536,7 @@ class _TextBubbleState extends State<_TextBubble> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = 'Errore: $e';
+          _error = _friendlyDecryptError(e);
         });
       }
     }
@@ -668,7 +680,7 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
       _opening = false;
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Errore: $e')));
+            .showSnackBar(SnackBar(content: Text(_friendlyDecryptError(e))));
       }
     }
   }

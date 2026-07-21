@@ -14,6 +14,10 @@ class LocalPrefs {
   static Future<void> setBiometricEnabled(bool v) async =>
       _p?.setBool('biometric_enabled', v);
 
+  // --- Modalità panic (mostra il decoy finché non si sblocca) --------------
+  static bool get panic => _p?.getBool('panic_mode') ?? false;
+  static Future<void> setPanic(bool v) async => _p?.setBool('panic_mode', v);
+
   // --- Ultimo messaggio letto per conversazione ----------------------------
   static DateTime? lastRead(String conversationId) {
     final s = _p?.getString('lastread_$conversationId');

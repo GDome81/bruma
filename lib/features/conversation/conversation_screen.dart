@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -233,8 +234,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void _scrollToBottomSoon() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_itemScroll.isAttached && _messages.isNotEmpty) {
+        // alignment 1.0 → clamp in fondo (ultimo messaggio in basso).
         _itemScroll.scrollTo(
           index: _messages.length - 1,
+          alignment: 1.0,
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
         );
@@ -256,9 +259,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (_didInitialScroll || _messages.isEmpty) return;
     _didInitialScroll = true;
     final unread = _computeFirstUnread();
-    final target = unread >= 0 ? unread : _messages.length - 1;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_itemScroll.isAttached) _itemScroll.jumpTo(index: target);
+      if (!_itemScroll.isAttached) return;
+      if (unread >= 0) {
+        // Primo non letto: in alto (così inizi a leggere da lì).
+        _itemScroll.jumpTo(index: unread, alignment: 0.0);
+      } else {
+        // Nessun non letto: più recente in fondo (alignment 1.0 → clamp).
+        _itemScroll.jumpTo(index: _messages.length - 1, alignment: 1.0);
+      }
     });
   }
 
@@ -274,6 +283,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
   }
+
+  // Vero su desktop (tastiera fisica) — anche su web riflette l'OS del browser.
+  bool get _hasKeyboard => const {
+        TargetPlatform.windows,
+        TargetPlatform.macOS,
+        TargetPlatform.linux,
+      }.contains(defaultTargetPlatform);
 
   Future<void> _sendText() async {
     final t = _text.text.trim();
@@ -741,13 +757,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       onTap: () {
                         if (_showEmoji) setState(() => _showEmoji = false);
                       },
-                      decoration: const InputDecoration(
-                        hintText: 'Messaggio (Ctrl+Invio per inviare)',
-                        border: OutlineInputBorder(
+                      decoration: InputDecoration(
+                        hintText: _hasKeyboard
+                            ? 'Messaggio (Ctrl+Invio per inviare)'
+                            : 'Messaggio',
+                        border: const OutlineInputBorder(
                           borderRadius: BorderRadius.all(Radius.circular(24)),
                         ),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
                       ),
                     ),
                   ),

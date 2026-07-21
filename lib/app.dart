@@ -6,7 +6,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/app_services.dart';
 import 'features/auth/auth_screen.dart';
 import 'features/auth/biometric_gate.dart';
+import 'features/auth/decoy_screen.dart';
 import 'features/auth/onboarding_screen.dart';
+import 'features/auth/panic_button.dart';
 import 'features/auth/recovery_screen.dart';
 import 'features/chats/chats_screen.dart';
 import 'features/notifications/notification_host.dart';
@@ -25,6 +27,13 @@ class BrumaApp extends StatelessWidget {
       darkTheme: BrumaTheme.dark(),
       themeMode: ThemeMode.system,
       home: const AuthGate(),
+      // Il panic button resta sopra qualunque schermata/route.
+      builder: (context, child) => Stack(
+        children: [
+          ?child,
+          const PanicButton(),
+        ],
+      ),
     );
   }
 }
@@ -58,7 +67,14 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     final session = AppServices.instance.auth.currentSession;
-    if (session == null) return const AuthScreen();
+    if (session == null) {
+      // Logout normale → login; dopo un panic → decoy (calcolatrice).
+      return ValueListenableBuilder<bool>(
+        valueListenable: AppServices.instance.panicMode,
+        builder: (_, panic, _) =>
+            panic ? const DecoyScreen() : const AuthScreen(),
+      );
+    }
     return IdentityGate(key: ValueKey(session.user.id));
   }
 }

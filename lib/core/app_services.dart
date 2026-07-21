@@ -3,6 +3,7 @@ import 'package:sodium_libs/sodium_libs.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'crypto/crypto_service.dart';
+import 'local_prefs.dart';
 import 'models/models.dart';
 import 'secure_store/key_store.dart';
 import 'supabase/access_repository.dart';
@@ -70,6 +71,21 @@ class AppServices {
   /// Incrementa quando una mia richiesta di contenuto viene gestita
   /// (rinnovo/reinvio): le bolle foto rileggono lo stato di accesso dal vivo.
   final ValueNotifier<int> accessTick = ValueNotifier<int>(0);
+
+  /// Modalità "panic": quando attiva, l'app mostra un decoy (calcolatrice) al
+  /// posto del login finché non si sblocca. Persistita in LocalPrefs.
+  final ValueNotifier<bool> panicMode = ValueNotifier<bool>(false);
+
+  Future<void> setPanic(bool value) async {
+    panicMode.value = value;
+    await LocalPrefs.setPanic(value);
+  }
+
+  /// Attiva il panic: nasconde tutto (decoy) e disconnette (richiede re-login).
+  Future<void> panic() async {
+    await setPanic(true);
+    await signOut();
+  }
 
   String? cachedText(String messageId) => _decryptedText[messageId];
   void cacheText(String messageId, String value) =>

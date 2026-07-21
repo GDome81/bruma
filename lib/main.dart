@@ -25,6 +25,7 @@ Future<void> main() async {
   await AppServices.instance.refreshIdentity();
   await LocalPrefs.init();
   await NotificationService.init();
+  AppServices.instance.panicMode.value = LocalPrefs.panic;
 
   runApp(const BrumaApp());
 }
