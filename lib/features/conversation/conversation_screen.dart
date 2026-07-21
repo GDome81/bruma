@@ -150,23 +150,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
         _loadingOlder = false;
         return;
       }
-      final positions = _positions.itemPositions.value;
-      var firstVisible = 0;
-      var edge = 0.0;
-      if (positions.isNotEmpty) {
-        final anchor = positions.reduce((a, b) => a.index < b.index ? a : b);
-        firstVisible = anchor.index;
-        edge = anchor.itemLeadingEdge; // conserva l'offset frazionario
-      }
-      final added = older.length;
+      // Lista invertita: prependere i più vecchi non sposta gli indici degli
+      // item già visibili (in fondo), quindi nessun "salto" da compensare.
       setState(() => _messages.insertAll(0, older.reversed));
       _hasMore = older.length == _pageSize;
-      // Compensa lo spostamento degli indici (e l'offset) per non far saltare.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_itemScroll.isAttached) {
-          _itemScroll.jumpTo(index: firstVisible + added, alignment: edge);
-        }
-      });
       await _reloadReactions();
     } finally {
       _loadingOlder = false;
@@ -217,17 +204,18 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void _onPositions() {
     final positions = _positions.itemPositions.value;
     if (positions.isEmpty) return;
-    final minIndex = positions.map((p) => p.index).reduce(min);
-    if (minIndex <= 3) _loadOlder();
+    // reverse: gli indici ALTI sono i messaggi più VECCHI (in cima). Carico la
+    // pagina precedente quando ci si avvicina alla cima.
+    final maxIndex = positions.map((p) => p.index).reduce(max);
+    if (maxIndex >= _messages.length - 4) _loadOlder();
   }
 
   void _scrollToBottomSoon() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // reverse: l'indice 0 è il più recente, in fondo → posizione esatta.
       if (_itemScroll.isAttached && _messages.isNotEmpty) {
-        // alignment 1.0 → clamp in fondo (ultimo messaggio in basso).
         _itemScroll.scrollTo(
-          index: _messages.length - 1,
-          alignment: 1.0,
+          index: 0,
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
         );
@@ -252,11 +240,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_itemScroll.isAttached) return;
       if (unread >= 0) {
-        // Primo non letto: in alto (così inizi a leggere da lì).
-        _itemScroll.jumpTo(index: unread, alignment: 0.0);
+        // reverse: indice invertito del primo non letto (portato in vista).
+        _itemScroll.jumpTo(index: _messages.length - 1 - unread);
       } else {
-        // Nessun non letto: più recente in fondo (alignment 1.0 → clamp).
-        _itemScroll.jumpTo(index: _messages.length - 1, alignment: 1.0);
+        // Più recente in fondo = indice 0 (naturale con reverse).
+        _itemScroll.jumpTo(index: 0);
       }
     });
   }
@@ -332,44 +320,33 @@ class _ConversationScreenState extends State<ConversationScreen> {
       context: context,
       builder: (ctx) => Dialog.fullscreen(
         backgroundColor: Colors.black,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: InteractiveViewer(
-                child: Center(child: Image.memory(bytes, fit: BoxFit.contain)),
-              ),
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text('Anteprima'),
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(ctx, false),
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.55),
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              side: const BorderSide(color: Colors.white54)),
-                          icon: const Icon(Icons.close),
-                          label: const Text('Annulla'),
-                        ),
-                        FilledButton.icon(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          icon: const Icon(Icons.send),
-                          label: const Text('Invia'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            ),
+          ),
+          persistentFooterAlignment: AlignmentDirectional.center,
+          persistentFooterButtons: [
+            OutlinedButton.icon(
+              onPressed: () => Navigator.pop(ctx, false),
+              icon: const Icon(Icons.close),
+              label: const Text('Annulla'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(ctx, true),
+              icon: const Icon(Icons.send),
+              label: const Text('Invia'),
             ),
           ],
         ),
@@ -477,7 +454,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final idx = _messages.indexWhere((m) => m.id == messageId);
     if (idx >= 0 && _itemScroll.isAttached) {
       _itemScroll.scrollTo(
-        index: idx,
+        index: _messages.length - 1 - idx, // indice invertito (reverse)
         duration: const Duration(milliseconds: 300),
         alignment: 0.3,
       );
@@ -564,13 +541,17 @@ class _ConversationScreenState extends State<ConversationScreen> {
             'Scrivi o invia una foto. I contenuti sono cifrati end-to-end.',
       );
     }
+    // reverse: true → l'indice 0 è in FONDO. Mappo l'indice invertito i sul
+    // messaggio in ordine crescente, così il più recente resta in basso.
     return ScrollablePositionedList.builder(
+      reverse: true,
       itemScrollController: _itemScroll,
       itemPositionsListener: _positions,
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _messages.length,
       itemBuilder: (_, i) {
-        final m = _messages[i];
+        final ai = _messages.length - 1 - i; // indice crescente reale
+        final m = _messages[ai];
         final bubble = MessageBubble(
           key: ValueKey(m.id),
           message: m,
@@ -581,7 +562,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
           resolveReply: _resolveMessage,
           onQuoteTap: _goToMessage,
         );
-        if (i == firstUnread && firstUnread > 0) {
+        // Il separatore "non letti" va SOPRA il primo non letto (nell'item, il
+        // Column è in orientamento normale anche con reverse).
+        if (ai == firstUnread && firstUnread > 0) {
           return Column(children: [_unreadDivider(context), bubble]);
         }
         return bubble;

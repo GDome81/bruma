@@ -454,19 +454,34 @@ class _ReadReceiptState extends State<_ReadReceipt> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final a = _a;
-    final IconData icon;
+    // Distinzione per CONTEO di spunte (accessibile ai daltonici):
+    // 1 = inviato, 2 = consegnato, 3 = letto (+ blu come bonus).
+    final int count;
     final Color color;
+    final String tip;
     if (a == null) {
-      icon = Icons.check;
+      count = 1;
       color = cs.onSurfaceVariant;
+      tip = 'Inviato';
     } else if (a.openCount > 0) {
-      icon = Icons.done_all;
+      count = 3;
       color = _readBlue;
+      tip = 'Letto';
     } else {
-      icon = Icons.done_all;
+      count = 2;
       color = cs.onSurfaceVariant;
+      tip = 'Consegnato';
     }
-    return Icon(icon, size: 15, color: color);
+    return Tooltip(
+      message: tip,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(
+          count,
+          (_) => Icon(Icons.check, size: 12, color: color),
+        ),
+      ),
+    );
   }
 }
 

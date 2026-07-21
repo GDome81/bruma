@@ -112,59 +112,34 @@ class _CameraScreenState extends State<CameraScreen>
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: InteractiveViewer(
-              maxScale: 5,
-              child: Center(
-                child: Image.memory(
-                  _preview!,
-                  fit: BoxFit.contain,
-                  gaplessPlayback: true,
-                  errorBuilder: (_, _, _) => const Text(
-                    'Impossibile mostrare l\'anteprima',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
+      body: Center(
+        child: InteractiveViewer(
+          maxScale: 5,
+          child: Image.memory(
+            _preview!,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            errorBuilder: (_, _, _) => const Text(
+              'Impossibile mostrare l\'anteprima',
+              style: TextStyle(color: Colors.white),
             ),
           ),
-          // Barra pulsanti SEMPRE visibile in fondo, sopra l'immagine.
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.55),
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: _retake,
-                        style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            side: const BorderSide(color: Colors.white54)),
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Riscatta'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: _send,
-                        icon: const Icon(Icons.send),
-                        label: const Text('Invia'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
+      // Pinnati in fondo dallo Scaffold: SEMPRE visibili (anche su web mobile).
+      persistentFooterAlignment: AlignmentDirectional.center,
+      persistentFooterButtons: [
+        OutlinedButton.icon(
+          onPressed: _retake,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Riscatta'),
+        ),
+        FilledButton.icon(
+          onPressed: _send,
+          icon: const Icon(Icons.send),
+          label: const Text('Invia'),
+        ),
+      ],
     );
   }
 
