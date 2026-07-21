@@ -1,0 +1,66 @@
+name: bruma
+description: "Bruma — chat privata di messaggi e foto effimere, cifrati end-to-end."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Backend Supabase (auth, db, storage, realtime)
+  supabase_flutter: ^2.5.0
+
+  # Crittografia E2E (libsodium con binari nativi bundled)
+  sodium: ^3.0.0
+  sodium_libs: ^3.0.0
+
+  # Custodia locale della chiave privata
+  flutter_secure_storage: ^9.2.2
+
+  # Fotocamera in-app
+  camera: ^0.11.0
+  path_provider: ^2.1.4
+
+  # Cache/indice locale
+  sqflite: ^2.3.3
+
+  # Codice invito: QR
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+
+  # NB: il blocco screenshot (FLAG_SECURE) è implementato nativamente in
+  # MainActivity.kt via MethodChannel (lib/core/secure_screen.dart), senza
+  # dipendenze esterne — il plugin screen_protector non è compatibile AGP 9.
+
+  # Condivisione del codice invito
+  share_plus: ^10.0.0
+
+  # Login/blocco biometrico
+  local_auth: ^2.3.0
+
+  # Preferenze locali (ultimo messaggio letto, blocco biometrico)
+  shared_preferences: ^2.3.0
+
+  # Lista con scroll per indice (vai al primo messaggio non letto)
+  scrollable_positioned_list: ^0.3.8
+
+  # Selettore emoji (comporre messaggi + reactions complete)
+  emoji_picker_flutter: ^4.3.0
+
+  # Notifiche locali (fase 1; FCM in seguito)
+  flutter_local_notifications: ^18.0.0
+
+  # Allega foto esistenti dalla galleria
+  image_picker: ^1.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
