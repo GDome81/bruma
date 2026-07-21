@@ -42,7 +42,12 @@ class _PanicButtonState extends State<PanicButton> {
       left: 0,
       top: media.size.height * 0.42,
       child: GestureDetector(
-        onTap: () => AppServices.instance.panic(),
+        onTap: () {
+          // Chiude tutte le schermate aperte, poi mostra il decoy + logout.
+          AppServices.instance.navigatorKey.currentState
+              ?.popUntil((r) => r.isFirst);
+          AppServices.instance.panic();
+        },
         child: Opacity(
           opacity: 0.45,
           child: Container(

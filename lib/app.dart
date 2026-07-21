@@ -23,6 +23,7 @@ class BrumaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Bruma',
       debugShowCheckedModeBanner: false,
+      navigatorKey: AppServices.instance.navigatorKey,
       theme: BrumaTheme.light(),
       darkTheme: BrumaTheme.dark(),
       themeMode: ThemeMode.system,

@@ -195,12 +195,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (!mounted) return;
     if (m.conversationId != widget.conversationId) return;
     if (_messages.any((x) => x.id == m.id)) return;
-    final wasNearBottom = _isNearBottom();
     setState(() => _messages.add(m));
     _markRead();
-    if (wasNearBottom || m.senderId == AppServices.instance.uid) {
-      _scrollToBottomSoon();
-    }
+    _scrollToBottomSoon(); // su invio E ricezione: vai in fondo
   }
 
   void _onUpdate(Message m) {
@@ -222,13 +219,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (positions.isEmpty) return;
     final minIndex = positions.map((p) => p.index).reduce(min);
     if (minIndex <= 3) _loadOlder();
-  }
-
-  bool _isNearBottom() {
-    final positions = _positions.itemPositions.value;
-    if (positions.isEmpty) return true;
-    final maxIndex = positions.map((p) => p.index).reduce(max);
-    return maxIndex >= _messages.length - 2;
   }
 
   void _scrollToBottomSoon() {
@@ -342,34 +332,42 @@ class _ConversationScreenState extends State<ConversationScreen> {
       context: context,
       builder: (ctx) => Dialog.fullscreen(
         backgroundColor: Colors.black,
-        child: Column(
+        child: Stack(
           children: [
-            Expanded(
+            Positioned.fill(
               child: InteractiveViewer(
                 child: Center(child: Image.memory(bytes, fit: BoxFit.contain)),
               ),
             ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white54)),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Annulla'),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.55),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Colors.white54)),
+                          icon: const Icon(Icons.close),
+                          label: const Text('Annulla'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          icon: const Icon(Icons.send),
+                          label: const Text('Invia'),
+                        ),
+                      ],
                     ),
-                    FilledButton.icon(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      icon: const Icon(Icons.send),
-                      label: const Text('Invia'),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

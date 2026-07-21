@@ -112,9 +112,9 @@ class _CameraScreenState extends State<CameraScreen>
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
+          Positioned.fill(
             child: InteractiveViewer(
               maxScale: 5,
               child: Center(
@@ -130,27 +130,36 @@ class _CameraScreenState extends State<CameraScreen>
               ),
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _retake,
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white54)),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Riscatta'),
+          // Barra pulsanti SEMPRE visibile in fondo, sopra l'immagine.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.55),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _retake,
+                        style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white54)),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Riscatta'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _send,
+                        icon: const Icon(Icons.send),
+                        label: const Text('Invia'),
+                      ),
+                    ],
                   ),
-                  FilledButton.icon(
-                    onPressed: _send,
-                    icon: const Icon(Icons.send),
-                    label: const Text('Invia'),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -198,10 +207,18 @@ class _CameraScreenState extends State<CameraScreen>
                 }
                 return Stack(
                   children: [
-                    // Anteprima centrata e non distorta (letterbox): affidabile
-                    // su tutti i dispositivi e sul web, mai nera.
+                    // Anteprima a tutto schermo (cover) senza distorsione:
+                    // riempie lo schermo e ritaglia l'eccesso.
                     Positioned.fill(
-                      child: Center(child: CameraPreview(_controller!)),
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        clipBehavior: Clip.hardEdge,
+                        child: SizedBox(
+                          width: 100,
+                          height: 100 / _controller!.value.aspectRatio,
+                          child: CameraPreview(_controller!),
+                        ),
+                      ),
                     ),
                     Positioned(
                       top: 12,

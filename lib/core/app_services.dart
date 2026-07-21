@@ -1,4 +1,6 @@
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
+
+import 'package:flutter/widgets.dart';
 import 'package:sodium_libs/sodium_libs.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -36,6 +38,10 @@ class AppServices {
   });
 
   static late AppServices instance;
+
+  /// Chiave del Navigator radice: permette al panic button (che vive in un
+  /// overlay sopra il Navigator) di chiudere tutte le route pushate.
+  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   final Sodium sodium;
   final CryptoService crypto;
