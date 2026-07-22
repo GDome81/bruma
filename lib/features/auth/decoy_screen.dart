@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../core/app_services.dart';
+import 'decoy_common.dart';
 
-/// Schermata "decoy" mostrata in modalità panic: sembra una normale
-/// calcolatrice. Per tornare all'app: LONG-PRESS sul display → login.
+/// Maschera "calcolatrice": sembra una normale calcolatrice. Sblocco: digita il
+/// PIN e premi "=" (oppure long-press sul display; biometria su APK).
 class DecoyScreen extends StatefulWidget {
   const DecoyScreen({super.key});
 
@@ -11,7 +11,8 @@ class DecoyScreen extends StatefulWidget {
   State<DecoyScreen> createState() => _DecoyScreenState();
 }
 
-class _DecoyScreenState extends State<DecoyScreen> {
+class _DecoyScreenState extends State<DecoyScreen>
+    with DecoyUnlockMixin<DecoyScreen> {
   String _display = '0';
   double? _acc;
   String? _op;
@@ -73,10 +74,7 @@ class _DecoyScreenState extends State<DecoyScreen> {
 
   void _equals() {
     // Sblocco nascosto: digita il PIN e premi "=" (senza operazioni in corso).
-    if (_op == null && AppServices.instance.verifyPin(_display)) {
-      _unlock();
-      return;
-    }
+    if (_op == null && submitPin(_display)) return;
     setState(() {
       _compute();
       _op = null;
@@ -106,26 +104,6 @@ class _DecoyScreenState extends State<DecoyScreen> {
 
   void _percent() {
     setState(() => _display = _fmt(_value / 100));
-  }
-
-  // Sblocco: rimuove la calcolatrice e mostra l'app/login sottostante.
-  void _unlock() => AppServices.instance.setPanic(false);
-
-  // Long-press:
-  //  * senza PIN → rivela login/app;
-  //  * con PIN + biometria (solo APK) → prova impronta/volto e sblocca;
-  //  * con PIN e senza biometria → non fa nulla (serve il PIN + "=").
-  // Così il PIN non è mai aggirabile.
-  Future<void> _longPressUnlock() async {
-    final s = AppServices.instance;
-    if (!s.lockEnabled) {
-      _unlock();
-      return;
-    }
-    if (s.biometricUnlockEnabled) {
-      final ok = await s.authenticateBiometric();
-      if (ok) _unlock();
-    }
   }
 
   Widget _btn(String label,
@@ -167,7 +145,7 @@ class _DecoyScreenState extends State<DecoyScreen> {
             Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onLongPress: _longPressUnlock,
+                onLongPress: longPressUnlock,
                 child: Container(
                   width: double.infinity,
                   alignment: Alignment.bottomRight,

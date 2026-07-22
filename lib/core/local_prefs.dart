@@ -18,6 +18,11 @@ class LocalPrefs {
   static bool get panic => _p?.getBool('panic_mode') ?? false;
   static Future<void> setPanic(bool v) async => _p?.setBool('panic_mode', v);
 
+  // --- Tipo di maschera (calculator | moonPhase | gallery) -----------------
+  static String get decoyType => _p?.getString('decoy_type') ?? 'calculator';
+  static Future<void> setDecoyType(String v) async =>
+      _p?.setString('decoy_type', v);
+
   // --- Blocco app con PIN (+ biometria su APK) -----------------------------
   static bool get appLockEnabled => _p?.getBool('app_lock_enabled') ?? false;
   static Future<void> setAppLockEnabled(bool v) async =>

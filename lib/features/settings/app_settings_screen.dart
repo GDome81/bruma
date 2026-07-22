@@ -6,6 +6,7 @@ import '../../core/app_services.dart';
 import '../../core/config.dart';
 import '../../core/local_prefs.dart';
 import '../../shared/widgets.dart';
+import '../auth/decoy_common.dart';
 
 /// Impostazioni di sicurezza: PIN di blocco (+ biometria su APK) e versione.
 class AppSettingsScreen extends StatefulWidget {
@@ -44,6 +45,17 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     await AppServices.instance.disableLock();
     if (mounted) setState(() {});
     _snack('Blocco disattivato.');
+  }
+
+  IconData _decoyIcon(DecoyType t) {
+    switch (t) {
+      case DecoyType.calculator:
+        return Icons.calculate_outlined;
+      case DecoyType.moonPhase:
+        return Icons.nightlight_round;
+      case DecoyType.gallery:
+        return Icons.photo_library_outlined;
+    }
   }
 
   Future<void> _toggleBiometric(bool v) async {
@@ -127,6 +139,32 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               onTap: _removePin,
             ),
           ],
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text('Maschera',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text('Come si presenta Bruma quando è bloccata.',
+                style: TextStyle(fontSize: 13)),
+          ),
+          ...DecoyType.values.map((t) {
+            final selected = decoyTypeFromString(LocalPrefs.decoyType) == t;
+            return ListTile(
+              leading: Icon(_decoyIcon(t)),
+              title: Text(decoyTypeLabel(t)),
+              trailing: selected
+                  ? Icon(Icons.check_circle,
+                      color: Theme.of(context).colorScheme.primary)
+                  : null,
+              onTap: () async {
+                await LocalPrefs.setDecoyType(decoyTypeToString(t));
+                if (mounted) setState(() {});
+              },
+            );
+          }),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.notifications_active_outlined),

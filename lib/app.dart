@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/app_services.dart';
+import 'core/local_prefs.dart';
 import 'features/auth/auth_screen.dart';
+import 'features/auth/decoy_common.dart';
+import 'features/auth/decoy_gallery_screen.dart';
+import 'features/auth/decoy_moon_screen.dart';
 import 'features/auth/decoy_screen.dart';
 import 'features/auth/onboarding_screen.dart';
 import 'features/auth/panic_button.dart';
@@ -75,6 +79,18 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
     }
   }
 
+  /// La maschera scelta dall'utente (Impostazioni → Sicurezza → Maschera).
+  Widget _decoy() {
+    switch (decoyTypeFromString(LocalPrefs.decoyType)) {
+      case DecoyType.moonPhase:
+        return const DecoyMoonScreen();
+      case DecoyType.gallery:
+        return const DecoyGalleryScreen();
+      case DecoyType.calculator:
+        return const DecoyScreen();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -95,7 +111,7 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
           ValueListenableBuilder<bool>(
             valueListenable: AppServices.instance.panicMode,
             builder: (_, panic, _) => panic
-                ? const Positioned.fill(child: DecoyScreen())
+                ? Positioned.fill(child: _decoy())
                 : const SizedBox.shrink(),
           ),
         ],
