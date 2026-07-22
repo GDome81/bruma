@@ -19,7 +19,9 @@ class AppLockGate extends StatefulWidget {
 }
 
 class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
-  bool _locked = false;
+  bool _locked = false; // richiede il PIN
+  bool _covered = false; // solo copertura privacy (nessun PIN)
+  bool _wasPaused = false;
 
   @override
   void initState() {
@@ -37,16 +39,52 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!AppServices.instance.lockEnabled) return;
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
-      if (mounted && !_locked) setState(() => _locked = true);
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused) {
+      // Perdita del focus / background: copri SUBITO i contenuti (così
+      // l'anteprima nella gallery delle app recenti mostra la copertura, non
+      // la chat). Il PIN scatterà solo se l'app è stata davvero messa in
+      // background (`paused`), non per un blur transitorio (es. file picker).
+      if (state == AppLifecycleState.paused) _wasPaused = true;
+      if (mounted && !_locked && !_covered) setState(() => _covered = true);
+    } else if (state == AppLifecycleState.resumed) {
+      final needLock = _wasPaused;
+      _wasPaused = false;
+      if (mounted) {
+        setState(() {
+          if (needLock) _locked = true;
+          _covered = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!AppServices.instance.lockEnabled || !_locked) return widget.child;
-    return _LockScreen(onUnlocked: () => setState(() => _locked = false));
+    if (!AppServices.instance.lockEnabled) return widget.child;
+    if (_locked) {
+      return _LockScreen(
+          onUnlocked: () => setState(() {
+                _locked = false;
+                _covered = false;
+              }));
+    }
+    if (_covered) return const _PrivacyCover();
+    return widget.child;
+  }
+}
+
+/// Copertura privacy mostrata quando l'app perde il focus: solo il logo, nessun
+/// contenuto. Non richiede PIN (quello scatta al ritorno da background).
+class _PrivacyCover extends StatelessWidget {
+  const _PrivacyCover();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: BrumaLogo(size: 96)),
+    );
   }
 }
 

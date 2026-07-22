@@ -228,7 +228,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
         style: TextStyle(
             fontWeight: hasUnread ? FontWeight.bold : FontWeight.w500),
       ),
-      trailing: Column(
+      // Larghezza fissa: evita l'assert "Trailing widget consumes the entire
+      // tile width" di ListTile e tiene orario e badge sempre allineati.
+      trailing: SizedBox(
+        width: 62,
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -243,6 +247,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
           const SizedBox(height: 6),
           if (hasUnread) _unreadBadge(unread, cs) else const SizedBox(height: 18),
         ],
+        ),
       ),
       onTap: () => _openConversation(v),
     );
@@ -250,19 +255,23 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   Widget _unreadBadge(int n, ColorScheme cs) {
     final label = n > 99 ? '99+' : '$n';
+    // NB: niente `alignment` qui — un Container con alignment sotto vincoli
+    // "loose" si allarga a tutta la larghezza disponibile (era la causa del
+    // pallino a barra piena e del titolo schiacciato). Così si adatta al testo.
     return Container(
-      constraints: const BoxConstraints(minWidth: 20),
-      height: 20,
-      padding: const EdgeInsets.symmetric(horizontal: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: cs.primary,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(11),
       ),
-      alignment: Alignment.center,
       child: Text(
         label,
+        textAlign: TextAlign.center,
         style: TextStyle(
-            color: cs.onPrimary, fontSize: 12, fontWeight: FontWeight.bold),
+            color: cs.onPrimary,
+            fontSize: 12,
+            height: 1.0,
+            fontWeight: FontWeight.bold),
       ),
     );
   }
