@@ -36,20 +36,24 @@ class NotificationService {
         ?.requestNotificationsPermission();
   }
 
-  static Future<void> showGenericMessage() async {
+  static Future<void> showGenericMessage(
+      {bool silent = false, bool vibrate = true}) async {
     if (kIsWeb) {
       // Titolo/corpo volutamente anonimi: solo la luna.
-      showWebNotification('Bruma', '🌙');
+      await showWebNotification('Bruma', '🌙',
+          silent: silent, vibrate: vibrate);
       return;
     }
     if (!_ready) return;
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: AndroidNotificationDetails(
         'bruma_messages',
         'Aggiornamenti',
         channelDescription: 'Notifiche anonime di Bruma',
-        importance: Importance.high,
-        priority: Priority.high,
+        importance: silent ? Importance.low : Importance.high,
+        priority: silent ? Priority.low : Priority.high,
+        playSound: !silent,
+        enableVibration: vibrate && !silent,
       ),
     );
     // Nessun nome né testo: solo la luna.

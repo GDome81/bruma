@@ -45,6 +45,31 @@ class LocalPrefs {
     await _p?.setBool('app_lock_enabled', false);
   }
 
+  // --- Notifiche: suono, vibrazione, chat silenziate ----------------------
+  static bool get notifSound => _p?.getBool('notif_sound') ?? true;
+  static Future<void> setNotifSound(bool v) async =>
+      _p?.setBool('notif_sound', v);
+
+  static bool get notifVibrate => _p?.getBool('notif_vibrate') ?? true;
+  static Future<void> setNotifVibrate(bool v) async =>
+      _p?.setBool('notif_vibrate', v);
+
+  static List<String> get mutedChats =>
+      _p?.getStringList('muted_chats') ?? const [];
+
+  static bool isChatMuted(String conversationId) =>
+      mutedChats.contains(conversationId);
+
+  static Future<void> setChatMuted(String conversationId, bool muted) async {
+    final set = mutedChats.toSet();
+    if (muted) {
+      set.add(conversationId);
+    } else {
+      set.remove(conversationId);
+    }
+    await _p?.setStringList('muted_chats', set.toList());
+  }
+
   // --- Ultimo messaggio letto per conversazione ----------------------------
   static DateTime? lastRead(String conversationId) {
     final s = _p?.getString('lastread_$conversationId');

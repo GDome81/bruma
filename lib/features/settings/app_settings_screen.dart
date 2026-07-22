@@ -177,6 +177,34 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               _snack(msg);
             },
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.volume_up_outlined),
+            title: const Text('Suono'),
+            subtitle: const Text(
+                'Notifiche con suono. Spento = silenziose. (Suoneria '
+                'personalizzata solo su app Android.)'),
+            value: LocalPrefs.notifSound,
+            onChanged: (v) async {
+              await AppServices.instance.setNotifSound(v);
+              setState(() {});
+            },
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.vibration),
+            title: const Text('Vibrazione'),
+            value: LocalPrefs.notifVibrate,
+            onChanged: (v) async {
+              await AppServices.instance.setNotifVibrate(v);
+              setState(() {});
+            },
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+                'Puoi silenziare una singola chat dal menu ⋮ dentro la '
+                'conversazione.',
+                style: TextStyle(fontSize: 12)),
+          ),
           const Divider(),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 4),

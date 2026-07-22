@@ -530,6 +530,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
           ],
         ),
         actions: [
+          Builder(builder: (_) {
+            final muted = LocalPrefs.isChatMuted(widget.conversationId);
+            return IconButton(
+              tooltip: muted ? 'Riattiva notifiche' : 'Silenzia notifiche',
+              onPressed: () async {
+                await AppServices.instance
+                    .setChatMuted(widget.conversationId, !muted);
+                if (mounted) setState(() {});
+                _snack(!muted ? 'Chat silenziata' : 'Notifiche riattivate');
+              },
+              icon: Icon(muted
+                  ? Icons.notifications_off
+                  : Icons.notifications_none),
+            );
+          }),
           IconButton(
             tooltip: 'Statistiche',
             onPressed: _openStats,

@@ -7,4 +7,5 @@ bool webNotificationsGranted() => false;
 Future<Map<String, String>> subscribeWebPush(String vapidPublicKey) async =>
     throw UnsupportedError('Web Push disponibile solo sul web');
 
-Future<void> showWebNotification(String title, String body) async {}
+Future<void> showWebNotification(String title, String body,
+    {bool silent = false, bool vibrate = true}) async {}

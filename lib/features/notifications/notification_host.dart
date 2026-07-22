@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_services.dart';
+import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../core/notifications.dart';
 
@@ -46,7 +47,12 @@ class _NotificationHostState extends State<NotificationHost>
     // (in foreground la UI si aggiorna già dal vivo).
     if (m.senderId == AppServices.instance.uid) return;
     if (_lifecycle == AppLifecycleState.resumed) return;
-    NotificationService.showGenericMessage();
+    // Chat silenziata → niente notifica.
+    if (LocalPrefs.isChatMuted(m.conversationId)) return;
+    NotificationService.showGenericMessage(
+      silent: !LocalPrefs.notifSound,
+      vibrate: LocalPrefs.notifVibrate,
+    );
   }
 
   @override

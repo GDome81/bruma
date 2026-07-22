@@ -353,6 +353,51 @@ class AppServices {
     }
   }
 
+  // --- Preferenze notifiche (suono/vibrazione + muto per chat) -------------
+  // Salvate in locale (per le notifiche in-app) e sincronizzate su Supabase
+  // (best-effort) così anche la Edge Function del push le rispetta.
+
+  Future<void> setNotifSound(bool v) async {
+    await LocalPrefs.setNotifSound(v);
+    await _syncNotifPrefs();
+  }
+
+  Future<void> setNotifVibrate(bool v) async {
+    await LocalPrefs.setNotifVibrate(v);
+    await _syncNotifPrefs();
+  }
+
+  Future<void> _syncNotifPrefs() async {
+    try {
+      await client.from('notif_prefs').upsert({
+        'user_id': uid,
+        'sound': LocalPrefs.notifSound,
+        'vibrate': LocalPrefs.notifVibrate,
+      }, onConflict: 'user_id');
+    } catch (_) {
+      // la tabella potrebbe non esistere ancora: le notifiche in-app funzionano
+      // lo stesso, il push la rispetterà quando la migration è applicata.
+    }
+  }
+
+  Future<void> setChatMuted(String conversationId, bool muted) async {
+    await LocalPrefs.setChatMuted(conversationId, muted);
+    try {
+      if (muted) {
+        await client.from('chat_mutes').upsert({
+          'user_id': uid,
+          'conversation_id': conversationId,
+        }, onConflict: 'user_id,conversation_id');
+      } else {
+        await client
+            .from('chat_mutes')
+            .delete()
+            .eq('user_id', uid)
+            .eq('conversation_id', conversationId);
+      }
+    } catch (_) {}
+  }
+
   /// Tiene FLAG_SECURE attivo (anteprima recents nera su Android) finché il
   /// blocco è attivo. Il viewer foto si somma sopra questo "base".
   void applyLockFlagSecure() {

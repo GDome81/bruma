@@ -8,24 +8,29 @@
 self.addEventListener('push', function (event) {
   let title = 'Bruma';
   let body = '🌙';
+  let silent = false;
+  let vibrate = true;
   try {
     if (event.data) {
       const data = event.data.json();
       if (data && data.title) title = data.title;
       if (data && data.body) body = data.body;
+      if (data && data.silent === true) silent = true;
+      if (data && data.vibrate === false) vibrate = false;
     }
   } catch (e) {
     // payload non-JSON o vuoto: restiamo sul generico
   }
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body: body,
-      icon: 'icons/Icon-192.png',
-      badge: 'icons/Icon-192.png',
-      tag: 'bruma',
-      renotify: true,
-    })
-  );
+  const opts = {
+    body: body,
+    icon: 'icons/Icon-192.png',
+    badge: 'icons/Icon-192.png',
+    tag: 'bruma',
+    renotify: true,
+    silent: silent,
+    vibrate: silent || !vibrate ? [] : [200, 100, 200],
+  };
+  event.waitUntil(self.registration.showNotification(title, opts));
 });
 
 // Al tocco della notifica: porta in primo piano la finestra di Bruma (o la apre).

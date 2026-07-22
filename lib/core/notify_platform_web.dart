@@ -89,18 +89,23 @@ String? _keyToBase64Url(ByteBuffer? buffer) {
   return base64Url.encode(buffer.asUint8List()).replaceAll('=', '');
 }
 
-Future<void> showWebNotification(String title, String body) async {
+Future<void> showWebNotification(String title, String body,
+    {bool silent = false, bool vibrate = true}) async {
   if (!webNotificationsGranted()) return;
 
-  // 1) Costruttore diretto (desktop). Su Android lancia → cadiamo nel SW.
-  try {
-    html.Notification(title, body: body, icon: 'icons/Icon-192.png');
-    return;
-  } catch (_) {
-    // continua col Service Worker
+  // Se NON è silenziosa, prova il costruttore diretto (desktop). Se è
+  // silenziosa passiamo dal Service Worker, che rispetta il flag `silent`
+  // anche su desktop (il costruttore dart:html non espone `silent`).
+  if (!silent) {
+    try {
+      html.Notification(title, body: body, icon: 'icons/Icon-192.png');
+      return;
+    } catch (_) {
+      // Android Chrome: costruttore vietato → Service Worker.
+    }
   }
 
-  // 2) Service Worker (necessario su Android Chrome).
+  // Service Worker (necessario su Android Chrome; onora silent/vibrate).
   try {
     final sw = html.window.navigator.serviceWorker;
     if (sw == null) return;
@@ -111,6 +116,8 @@ Future<void> showWebNotification(String title, String body) async {
       'badge': 'icons/Icon-192.png',
       'tag': 'bruma',
       'renotify': true,
+      'silent': silent,
+      'vibrate': (silent || !vibrate) ? <int>[] : <int>[200, 100, 200],
     });
   } catch (_) {}
 }

@@ -41,6 +41,24 @@ Deno.serve(async (req) => {
     const recipientId = conv.user_a === msg.sender_id ? conv.user_b : conv.user_a;
     if (!recipientId) return new Response("no recipient", { status: 200 });
 
+    // Chat silenziata dal destinatario → niente push.
+    const { data: mute } = await admin
+      .from("chat_mutes")
+      .select("user_id")
+      .eq("user_id", recipientId)
+      .eq("conversation_id", msg.conversation_id)
+      .maybeSingle();
+    if (mute) return new Response("muted", { status: 200 });
+
+    // Preferenze suono/vibrazione (default: attivi).
+    const { data: prefs } = await admin
+      .from("notif_prefs")
+      .select("sound,vibrate")
+      .eq("user_id", recipientId)
+      .maybeSingle();
+    const sound = prefs?.sound ?? true;
+    const vibrate = prefs?.vibrate ?? true;
+
     // Subscription push del destinatario.
     const { data: subs } = await admin
       .from("push_subscriptions")
@@ -50,8 +68,13 @@ Deno.serve(async (req) => {
       return new Response("no subscriptions", { status: 200 });
     }
 
-    // Payload ANONIMO: nessun nome, nessun contenuto.
-    const body = JSON.stringify({ title: "Bruma", body: "🌙" });
+    // Payload ANONIMO: nessun nome, nessun contenuto (+ suono/vibrazione).
+    const body = JSON.stringify({
+      title: "Bruma",
+      body: "🌙",
+      silent: !sound,
+      vibrate,
+    });
 
     await Promise.all(
       subs.map(async (s) => {

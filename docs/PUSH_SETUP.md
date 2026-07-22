@@ -9,10 +9,15 @@ Codice già pronto nel repo:
 Restano da fare **su Supabase** (una volta sola). Ti servono la **Supabase CLI**
 (`npm i -g supabase`) e il *project ref* (lo trovi nell'URL del progetto).
 
-## 1) Applica la migration
-Dashboard → **SQL Editor** → incolla e lancia il contenuto di
-`supabase/migrations/20260722000000_push.sql`.
+## 1) Applica le migration
+Dashboard → **SQL Editor** → incolla e lancia il contenuto di:
+- `supabase/migrations/20260722000000_push.sql` (tabella subscription)
+- `supabase/migrations/20260722020000_notif_prefs.sql` (suono/vibrazione + chat
+  silenziate: senza questa il push funziona ma ignora quelle preferenze)
 (Oppure `supabase db push` se usi la CLI collegata.)
+
+> Se avevi già creato la Edge Function, **ri-deployala** dopo aver aggiornato
+> `send-push` (ora legge `chat_mutes`/`notif_prefs`).
 
 ## 2) Chiavi VAPID
 Sono già generate (te le ho date in chat):
