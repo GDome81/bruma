@@ -7,6 +7,8 @@ import '../../core/app_services.dart';
 import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../shared/widgets.dart';
+import '../auth/export_identity_screen.dart';
+import '../auth/import_identity_screen.dart';
 import '../contacts/add_contact_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../conversation/conversation_screen.dart';
@@ -126,6 +128,21 @@ class _ChatsScreenState extends State<ChatsScreen> {
             onSelected: (v) {
               if (v == 'signout') AppServices.instance.signOut();
               if (v == 'biometric') _toggleBiometric();
+              if (v == 'export') {
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const ExportIdentityScreen()));
+              }
+              if (v == 'import') {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ImportIdentityScreen(
+                    onCompleted: () {
+                      Navigator.of(context).pop();
+                      _snack(
+                          'Identità importata. Riapri l\'app per aggiornare tutte le chat.');
+                    },
+                  ),
+                ));
+              }
             },
             itemBuilder: (_) => [
               PopupMenuItem(
@@ -141,6 +158,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 checked: LocalPrefs.biometricEnabled,
                 child: const Text('Blocco biometrico'),
               ),
+              const PopupMenuItem(
+                  value: 'export', child: Text('Esporta identità')),
+              const PopupMenuItem(
+                  value: 'import', child: Text('Importa identità')),
               const PopupMenuItem(value: 'signout', child: Text('Esci')),
             ],
           ),

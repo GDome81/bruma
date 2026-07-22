@@ -174,6 +174,24 @@ class AppServices {
     _setIdentity(kp);
   }
 
+  /// Esporta l'identità corrente come stringa cifrata con [password].
+  String exportIdentity(String password) => crypto.exportIdentity(identity, password);
+
+  /// Importa un'identità (da backup + password): la salva sul dispositivo,
+  /// allinea la chiave pubblica sul profilo e la rende quella corrente.
+  /// Da qui in poi i contenuti cifrati per QUELLA identità sono apribili.
+  Future<void> importIdentity(String data, String password) async {
+    final kp = crypto.importIdentity(data, password); // lancia se pwd/dati errati
+    await keyStore.save(uid, kp);
+    await profiles.updatePublicKey(crypto.encodePublicKey(kp.publicKey));
+    _setIdentity(kp);
+    myProfile = await profiles.getMyProfile();
+    // Svuota le cache in RAM (cifrate con la vecchia chiave).
+    _decryptedText.clear();
+    textEcho.clear();
+    photoEcho.clear();
+  }
+
   /// Apre un contenuto: richiede la chiave al server (check atomico), la apre
   /// con la chiave privata locale e decifra IN RAM. Restituisce i byte in
   /// chiaro (che il chiamante deve scartare dopo l'uso; per il testo:

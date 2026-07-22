@@ -101,6 +101,91 @@ class CryptoService {
     }
   }
 
+  // --- Esporta / importa identità (backup cifrato con password) -----------
+
+  static const _exportPrefix = 'BRUMA1:';
+  static const _kdfIterations = 100000;
+  static const _saltBytes = 16;
+
+  /// Deriva una chiave a 32 byte dalla password (BLAKE2b iterato + salt).
+  SecureKey _deriveKey(String password, Uint8List salt) {
+    final keyLen = _sodium.crypto.secretBox.keyBytes;
+    var acc = Uint8List.fromList([...utf8.encode(password), ...salt]);
+    for (var i = 0; i < _kdfIterations; i++) {
+      acc = _sodium.crypto.genericHash(message: acc, outLen: keyLen);
+    }
+    final key = SecureKey.fromList(_sodium, acc);
+    for (var i = 0; i < acc.length; i++) {
+      acc[i] = 0;
+    }
+    return key;
+  }
+
+  /// Esporta la coppia di chiavi come stringa cifrata con [password].
+  String exportIdentity(KeyPair kp, String password) {
+    final salt = _sodium.randombytes.buf(_saltBytes);
+    final key = _deriveKey(password, salt);
+    final sk = kp.secretKey.extractBytes();
+    final payload = Uint8List(kp.publicKey.length + sk.length)
+      ..setAll(0, kp.publicKey)
+      ..setAll(kp.publicKey.length, sk);
+    try {
+      final nonce = _sodium.randombytes.buf(_sodium.crypto.secretBox.nonceBytes);
+      final cipher =
+          _sodium.crypto.secretBox.easy(message: payload, nonce: nonce, key: key);
+      final blob = Uint8List(1 + salt.length + nonce.length + cipher.length);
+      blob[0] = 1;
+      blob.setAll(1, salt);
+      blob.setAll(1 + salt.length, nonce);
+      blob.setAll(1 + salt.length + nonce.length, cipher);
+      return '$_exportPrefix${base64Encode(blob)}';
+    } finally {
+      key.dispose();
+      for (var i = 0; i < payload.length; i++) {
+        payload[i] = 0;
+      }
+      for (var i = 0; i < sk.length; i++) {
+        sk[i] = 0;
+      }
+    }
+  }
+
+  /// Importa una coppia di chiavi da una stringa esportata + [password].
+  /// Lancia se il formato non è valido o la password è errata.
+  KeyPair importIdentity(String data, String password) {
+    var s = data.trim();
+    if (s.startsWith(_exportPrefix)) s = s.substring(_exportPrefix.length);
+    final blob = base64Decode(s);
+    final nonceLen = _sodium.crypto.secretBox.nonceBytes;
+    if (blob.isEmpty || blob[0] != 1 || blob.length < 1 + _saltBytes + nonceLen) {
+      throw const FormatException('Formato identità non valido');
+    }
+    final salt = Uint8List.fromList(blob.sublist(1, 1 + _saltBytes));
+    final nonce =
+        Uint8List.fromList(blob.sublist(1 + _saltBytes, 1 + _saltBytes + nonceLen));
+    final cipher = Uint8List.fromList(blob.sublist(1 + _saltBytes + nonceLen));
+    final key = _deriveKey(password, salt);
+    try {
+      final payload = _sodium.crypto.secretBox
+          .openEasy(cipherText: cipher, nonce: nonce, key: key);
+      try {
+        final pk = Uint8List.fromList(payload.sublist(0, 32));
+        final sk = Uint8List.fromList(payload.sublist(32, 64));
+        final kp = keyPairFromRaw(pk, sk);
+        for (var i = 0; i < sk.length; i++) {
+          sk[i] = 0;
+        }
+        return kp;
+      } finally {
+        for (var i = 0; i < payload.length; i++) {
+          payload[i] = 0;
+        }
+      }
+    } finally {
+      key.dispose();
+    }
+  }
+
   // --- Base64 helpers per il testo ----------------------------------------
 
   String encodeBlob(Uint8List blob) => base64Encode(blob);

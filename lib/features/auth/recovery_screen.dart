@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/app_services.dart';
+import 'import_identity_screen.dart';
 
 /// Mostrata quando esiste un profilo remoto ma la chiave privata non e'
 /// presente su questo dispositivo (nuovo telefono o dati app cancellati).
@@ -62,11 +63,11 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                       style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   Text(
-                    'Le chiavi private non lasciano mai il telefono, quindi non '
-                    'possono essere recuperate da un altro dispositivo.\n\n'
-                    'Puoi generare una nuova identità: da ora potrai inviare e '
-                    'ricevere nuovi contenuti, ma i contenuti ricevuti in '
-                    'precedenza non saranno più apribili.',
+                    'Se hai un BACKUP dell\'identità (Esporta identità da un '
+                    'altro dispositivo), importalo qui per rivedere i tuoi '
+                    'contenuti. Altrimenti puoi generare una nuova identità: '
+                    'potrai inviare/ricevere nuovi contenuti, ma quelli '
+                    'precedenti non saranno più apribili.',
                     style: TextStyle(color: cs.onSurfaceVariant),
                   ),
                   if (_error != null) ...[
@@ -75,6 +76,19 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                   ],
                   const SizedBox(height: 24),
                   FilledButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ImportIdentityScreen(
+                                    onCompleted: widget.onCompleted),
+                              ),
+                            ),
+                    icon: const Icon(Icons.download),
+                    label: const Text('Importa identità (da backup)'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
                     onPressed: _loading ? null : _regenerate,
                     icon: _loading
                         ? const SizedBox(
