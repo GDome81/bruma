@@ -64,9 +64,12 @@ Future<Map<String, String>> subscribeWebPush(String vapidPublicKey) async {
 
   final html.PushSubscription sub;
   try {
+    // La chiave pubblica VAPID è già base64url SENZA padding: passata come
+    // stringa (Chrome la accetta). Passarla come Uint8List via dart:html la
+    // corrompe → "applicationServerKey is not encoded as base64url".
     sub = await pm.subscribe({
       'userVisibleOnly': true,
-      'applicationServerKey': _vapidKeyToBytes(vapidPublicKey),
+      'applicationServerKey': vapidPublicKey,
     });
   } catch (e) {
     throw Exception('subscribe: $e');
@@ -79,13 +82,6 @@ Future<Map<String, String>> subscribeWebPush(String vapidPublicKey) async {
     throw Exception('chiavi subscription mancanti');
   }
   return {'endpoint': endpoint, 'p256dh': p256dh, 'auth': auth};
-}
-
-Uint8List _vapidKeyToBytes(String base64Url) {
-  final pad = '=' * ((4 - base64Url.length % 4) % 4);
-  final normalized =
-      (base64Url + pad).replaceAll('-', '+').replaceAll('_', '/');
-  return base64Decode(normalized);
 }
 
 String? _keyToBase64Url(ByteBuffer? buffer) {
