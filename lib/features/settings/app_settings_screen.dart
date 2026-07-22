@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -37,7 +36,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     }
     await AppServices.instance.setPin(pin);
     if (mounted) setState(() {});
-    _snack('PIN impostato. L\'app si bloccherà in background.');
+    _snack('PIN impostato. Bruma ora si apre come calcolatrice: '
+        'digita il PIN e "=" per sbloccare.');
   }
 
   Future<void> _removePin() async {
@@ -83,8 +83,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             leading: const Icon(Icons.pin),
             title: const Text('Blocco con PIN'),
             subtitle: Text(enabled
-                ? 'Attivo · l\'app si blocca in background'
-                : 'Disattivato'),
+                ? 'Attivo · l\'app si apre come calcolatrice; sblocca col PIN e "="'
+                : 'Disattivato · l\'app si apre normalmente'),
           ),
           if (!enabled)
             ListTile(
@@ -97,20 +97,6 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               leading: const Icon(Icons.password),
               title: const Text('Cambia PIN'),
               onTap: _setPin,
-            ),
-            SwitchListTile(
-              secondary: const Icon(Icons.fingerprint),
-              title: const Text('Sblocco con biometria'),
-              subtitle: Text(kIsWeb
-                  ? 'Non disponibile sul web'
-                  : 'Impronta/volto sull\'app Android'),
-              value: LocalPrefs.lockUseBiometric,
-              onChanged: kIsWeb
-                  ? null
-                  : (v) async {
-                      await LocalPrefs.setLockUseBiometric(v);
-                      setState(() {});
-                    },
             ),
             ListTile(
               leading: Icon(Icons.delete_outline,

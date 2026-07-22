@@ -108,8 +108,14 @@ class _DecoyScreenState extends State<DecoyScreen> {
     setState(() => _display = _fmt(_value / 100));
   }
 
-  // Sblocco nascosto: torna al login (richiede re-autenticazione).
+  // Sblocco: rimuove la calcolatrice e mostra l'app/login sottostante.
   void _unlock() => AppServices.instance.setPanic(false);
+
+  // Long-press: sblocca SOLO se non è impostato un PIN (altrimenti il PIN
+  // sarebbe aggirabile). Con PIN attivo l'unico modo è digitarlo e premere "=".
+  void _longPressUnlock() {
+    if (!AppServices.instance.lockEnabled) _unlock();
+  }
 
   Widget _btn(String label,
       {Color? bg, Color? fg, VoidCallback? onTap}) {
@@ -150,7 +156,7 @@ class _DecoyScreenState extends State<DecoyScreen> {
             Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onLongPress: _unlock,
+                onLongPress: _longPressUnlock,
                 child: Container(
                   width: double.infinity,
                   alignment: Alignment.bottomRight,

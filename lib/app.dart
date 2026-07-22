@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/app_services.dart';
-import 'features/auth/app_lock_gate.dart';
 import 'features/auth/auth_screen.dart';
 import 'features/auth/decoy_screen.dart';
 import 'features/auth/onboarding_screen.dart';
@@ -15,8 +14,44 @@ import 'features/notifications/notification_host.dart';
 import 'shared/theme.dart';
 import 'shared/widgets.dart';
 
-class BrumaApp extends StatelessWidget {
+class BrumaApp extends StatefulWidget {
   const BrumaApp({super.key});
+
+  @override
+  State<BrumaApp> createState() => _BrumaAppState();
+}
+
+class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Unico meccanismo di blocco: la calcolatrice (panic overlay). Quando l'app
+    // perde DAVVERO il primo piano — `hidden` (scheda/PWA nascosta; su web NON
+    // arriva `paused`) o `paused` (Android nativo) — e il PIN è attivo,
+    // richiudiamo tutto dietro la calcolatrice. Così:
+    //  * al ritorno serve il PIN una sola volta (niente doppio controllo);
+    //  * l'anteprima nelle app recenti mostra la calcolatrice, non le chat.
+    // Il semplice `inactive` (blur transitorio: file picker, altra finestra
+    // sul desktop) NON blocca, per non essere invadenti.
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused) {
+      final s = AppServices.instance;
+      if (s.lockEnabled && !s.panicMode.value) {
+        s.setPanic(true);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,9 +167,7 @@ class _IdentityGateState extends State<IdentityGate> {
         if (!s.hasLocalIdentity) {
           return RecoveryScreen(onCompleted: _reload);
         }
-        return const NotificationHost(
-          child: AppLockGate(child: ChatsScreen()),
-        );
+        return const NotificationHost(child: ChatsScreen());
       },
     );
   }

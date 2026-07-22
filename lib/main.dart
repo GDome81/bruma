@@ -25,12 +25,12 @@ Future<void> main() async {
   await AppServices.instance.refreshIdentity();
   await LocalPrefs.init();
   await NotificationService.init();
-  // Bruma si presenta SEMPRE come una calcolatrice (decoy) all'avvio, anche al
-  // primo accesso: per raggiungere login/registrazione o le chat si fa un
-  // long-press sul display (o si digita il PIN e si preme "=").
-  AppServices.instance.panicMode.value = true;
-  // Se il blocco PIN è attivo, applica subito FLAG_SECURE (anteprima nera
-  // nei recenti su Android).
+  // Se è impostato un PIN, Bruma si apre già "bloccata" come calcolatrice: si
+  // sblocca digitando il PIN e "=". Senza PIN l'app si apre normalmente e la
+  // calcolatrice appare solo col tasto panic (che poi si sblocca col long-press).
+  AppServices.instance.panicMode.value = AppServices.instance.lockEnabled;
+  // Con il PIN attivo applica subito FLAG_SECURE (anteprima nera nei recenti
+  // su Android).
   AppServices.instance.applyLockFlagSecure();
 
   runApp(const BrumaApp());

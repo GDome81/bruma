@@ -4,4 +4,4 @@ Future<void> requestWebPermission() async {}
 
 bool webNotificationsGranted() => false;
 
-void showWebNotification(String title, String body) {}
+Future<void> showWebNotification(String title, String body) async {}
