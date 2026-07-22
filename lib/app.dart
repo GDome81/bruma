@@ -28,11 +28,19 @@ class BrumaApp extends StatelessWidget {
       darkTheme: BrumaTheme.dark(),
       themeMode: ThemeMode.system,
       home: const AuthGate(),
-      // Il panic button resta sopra qualunque schermata/route.
+      // Il panic button resta sopra qualunque schermata/route; quando il panic
+      // è attivo il decoy (calcolatrice) copre TUTTO senza disconnettere, così
+      // sbloccando si torna all'app già loggata.
       builder: (context, child) => Stack(
         children: [
           ?child,
           const PanicButton(),
+          ValueListenableBuilder<bool>(
+            valueListenable: AppServices.instance.panicMode,
+            builder: (_, panic, _) => panic
+                ? const Positioned.fill(child: DecoyScreen())
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
@@ -69,12 +77,9 @@ class _AuthGateState extends State<AuthGate> {
   Widget build(BuildContext context) {
     final session = AppServices.instance.auth.currentSession;
     if (session == null) {
-      // Logout normale → login; dopo un panic → decoy (calcolatrice).
-      return ValueListenableBuilder<bool>(
-        valueListenable: AppServices.instance.panicMode,
-        builder: (_, panic, _) =>
-            panic ? const DecoyScreen() : const AuthScreen(),
-      );
+      // Il decoy (in caso di panic) è gestito come overlay globale in
+      // MaterialApp.builder: qui basta login vs area autenticata.
+      return const AuthScreen();
     }
     return IdentityGate(key: ValueKey(session.user.id));
   }

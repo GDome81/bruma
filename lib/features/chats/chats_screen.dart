@@ -229,6 +229,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
             fontWeight: hasUnread ? FontWeight.bold : FontWeight.w500),
       ),
       trailing: Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [

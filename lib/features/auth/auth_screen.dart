@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_services.dart';
-import '../../shared/bruma_logo.dart';
 
 /// Login / registrazione con email + password (Supabase Auth).
 class AuthScreen extends StatefulWidget {
@@ -77,18 +76,13 @@ class _AuthScreenState extends State<AuthScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Center(child: BrumaLogo(size: 104)),
-                    const SizedBox(height: 12),
-                    Text('Bruma',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      'La bruma custodisce la luna, e la svela solo per te.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: cs.onSurfaceVariant),
+                    Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.asset('assets/bruma_logo.png'),
+                      ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 28),
                     TextFormField(
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,

@@ -64,24 +64,27 @@ dev_dependencies:
 
   # Genera icone launcher (Android) + favicon/PWA (web) dal logo.
   flutter_launcher_icons: ^0.14.1
+  # Ritaglio della luna dal banner per ricavare l'icona quadrata (tool/make_icon.dart).
+  image: ^4.0.0
 
 flutter:
   uses-material-design: true
   assets:
-    - assets/logo.jpeg
+    - assets/bruma_logo.png
+    - assets/bruma_icon.png
 
-# Icone generate dal logo (crescente argento). Rigenerare con:
-#   dart run flutter_launcher_icons
+# Icone generate dalla luna ritagliata dal banner. Rigenerare con:
+#   dart run tool/make_icon.dart && dart run flutter_launcher_icons
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/logo.jpeg"
+  image_path: "assets/bruma_icon.png"
   min_sdk_android: 21
-  # Icona adattiva Android: sfondo bianco (il logo è argento su bianco).
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/logo.jpeg"
+  # Icona adattiva Android: sfondo scuro come il banner del logo.
+  adaptive_icon_background: "#201416"
+  adaptive_icon_foreground: "assets/bruma_icon.png"
   web:
     generate: true
-    image_path: "assets/logo.jpeg"
-    background_color: "#FFFFFF"
-    theme_color: "#1A1526"
+    image_path: "assets/bruma_icon.png"
+    background_color: "#201416"
+    theme_color: "#201416"

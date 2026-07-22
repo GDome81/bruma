@@ -89,10 +89,10 @@ class AppServices {
     await LocalPrefs.setPanic(value);
   }
 
-  /// Attiva il panic: nasconde tutto (decoy) e disconnette (richiede re-login).
+  /// Attiva il panic: nasconde tutto dietro il decoy (calcolatrice) MA NON
+  /// disconnette. Sbloccando (PIN o long-press) si torna all'app già loggata.
   Future<void> panic() async {
     await setPanic(true);
-    await signOut();
   }
 
   String? cachedText(String messageId) => _decryptedText[messageId];
