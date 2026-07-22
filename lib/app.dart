@@ -22,6 +22,14 @@ class BrumaApp extends StatefulWidget {
 }
 
 class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
+  // Vero se in questo ciclo l'app è andata DAVVERO in background (hidden/
+  // paused), non solo un blur transitorio (inactive).
+  bool _wentBackground = false;
+  // Vero se la calcolatrice è stata mostrata dal ciclo di vita (per poterla
+  // togliere al ritorno da un blur transitorio senza chiedere il PIN, ma senza
+  // toccare un panic attivato a mano dal pulsante).
+  bool _coverSetByLifecycle = false;
+
   @override
   void initState() {
     super.initState();
@@ -36,20 +44,34 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Unico meccanismo di blocco: la calcolatrice (panic overlay). Quando l'app
-    // perde DAVVERO il primo piano — `hidden` (scheda/PWA nascosta; su web NON
-    // arriva `paused`) o `paused` (Android nativo) — e il PIN è attivo,
-    // richiudiamo tutto dietro la calcolatrice. Così:
-    //  * al ritorno serve il PIN una sola volta (niente doppio controllo);
-    //  * l'anteprima nelle app recenti mostra la calcolatrice, non le chat.
-    // Il semplice `inactive` (blur transitorio: file picker, altra finestra
-    // sul desktop) NON blocca, per non essere invadenti.
-    if (state == AppLifecycleState.hidden ||
+    final s = AppServices.instance;
+    // Senza PIN l'app NON si nasconde (scelta dell'utente): la calcolatrice si
+    // mostra solo col pulsante panic.
+    if (!s.lockEnabled) return;
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused) {
-      final s = AppServices.instance;
-      if (s.lockEnabled && !s.panicMode.value) {
-        s.setPanic(true);
+      // Copri SUBITO con la calcolatrice — anche solo su `inactive` — così
+      // l'anteprima nella gallery delle app recenti mostra la calcolatrice e
+      // non le chat (è lì che Android scatta l'istantanea).
+      if (state == AppLifecycleState.hidden ||
+          state == AppLifecycleState.paused) {
+        _wentBackground = true;
       }
+      if (!s.panicMode.value) {
+        s.setPanic(true);
+        _coverSetByLifecycle = true;
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      // Se è stato solo un blur transitorio (mai andata davvero in background)
+      // e la copertura l'avevamo messa noi, toglila senza chiedere il PIN.
+      // Se invece è andata in background, la calcolatrice resta → serve il PIN.
+      if (!_wentBackground && _coverSetByLifecycle && s.panicMode.value) {
+        s.setPanic(false);
+      }
+      _wentBackground = false;
+      _coverSetByLifecycle = false;
     }
   }
 

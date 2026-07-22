@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -44,6 +45,18 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     await AppServices.instance.disableLock();
     if (mounted) setState(() {});
     _snack('Blocco disattivato.');
+  }
+
+  Future<void> _toggleBiometric(bool v) async {
+    if (v) {
+      final ok = await AppServices.instance.deviceHasBiometrics();
+      if (!ok) {
+        _snack('Nessuna impronta/volto configurati su questo dispositivo.');
+        return;
+      }
+    }
+    await LocalPrefs.setLockUseBiometric(v);
+    if (mounted) setState(() {});
   }
 
   Future<String?> _askPin(String title) {
@@ -98,6 +111,16 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               title: const Text('Cambia PIN'),
               onTap: _setPin,
             ),
+            if (!kIsWeb)
+              SwitchListTile(
+                secondary: const Icon(Icons.fingerprint),
+                title: const Text('Sblocco con impronta/volto'),
+                subtitle: const Text(
+                    'Solo app Android. Tieni premuto sul display della '
+                    'calcolatrice per usarla; il PIN resta come alternativa.'),
+                value: LocalPrefs.lockUseBiometric,
+                onChanged: _toggleBiometric,
+              ),
             ListTile(
               leading: Icon(Icons.delete_outline,
                   color: Theme.of(context).colorScheme.error),

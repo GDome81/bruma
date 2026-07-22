@@ -111,10 +111,21 @@ class _DecoyScreenState extends State<DecoyScreen> {
   // Sblocco: rimuove la calcolatrice e mostra l'app/login sottostante.
   void _unlock() => AppServices.instance.setPanic(false);
 
-  // Long-press: sblocca SOLO se non è impostato un PIN (altrimenti il PIN
-  // sarebbe aggirabile). Con PIN attivo l'unico modo è digitarlo e premere "=".
-  void _longPressUnlock() {
-    if (!AppServices.instance.lockEnabled) _unlock();
+  // Long-press:
+  //  * senza PIN → rivela login/app;
+  //  * con PIN + biometria (solo APK) → prova impronta/volto e sblocca;
+  //  * con PIN e senza biometria → non fa nulla (serve il PIN + "=").
+  // Così il PIN non è mai aggirabile.
+  Future<void> _longPressUnlock() async {
+    final s = AppServices.instance;
+    if (!s.lockEnabled) {
+      _unlock();
+      return;
+    }
+    if (s.biometricUnlockEnabled) {
+      final ok = await s.authenticateBiometric();
+      if (ok) _unlock();
+    }
   }
 
   Widget _btn(String label,

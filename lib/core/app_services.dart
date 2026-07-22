@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:sodium_libs/sodium_libs.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -289,7 +291,41 @@ class AppServices {
 
   Future<void> disableLock() async {
     await LocalPrefs.clearPin();
+    await LocalPrefs.setLockUseBiometric(false);
     applyLockFlagSecure();
+  }
+
+  // --- Sblocco biometrico (solo APK; sul web local_auth non è disponibile) --
+
+  /// Biometria attivabile: solo su piattaforma nativa (non web).
+  bool get biometricSupportedPlatform => !kIsWeb;
+
+  /// Biometria attiva come sblocco alternativo (impostata dall'utente + APK).
+  bool get biometricUnlockEnabled => !kIsWeb && LocalPrefs.lockUseBiometric;
+
+  /// Il dispositivo ha una biometria configurata (impronta/volto).
+  Future<bool> deviceHasBiometrics() async {
+    if (kIsWeb) return false;
+    try {
+      final a = LocalAuthentication();
+      return await a.isDeviceSupported();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Mostra il prompt biometrico di sistema. Ritorna true se autenticato.
+  Future<bool> authenticateBiometric() async {
+    if (kIsWeb) return false;
+    try {
+      return await LocalAuthentication().authenticate(
+        localizedReason: 'Sblocca Bruma',
+        options: const AuthenticationOptions(
+            stickyAuth: true, biometricOnly: true),
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Tiene FLAG_SECURE attivo (anteprima recents nera su Android) finché il

@@ -23,7 +23,7 @@ class LocalPrefs {
   static Future<void> setAppLockEnabled(bool v) async =>
       _p?.setBool('app_lock_enabled', v);
 
-  static bool get lockUseBiometric => _p?.getBool('lock_biometric') ?? true;
+  static bool get lockUseBiometric => _p?.getBool('lock_biometric') ?? false;
   static Future<void> setLockUseBiometric(bool v) async =>
       _p?.setBool('lock_biometric', v);
 
