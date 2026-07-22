@@ -37,17 +37,16 @@ supabase functions deploy send-push --no-verify-jwt
 ```
 `--no-verify-jwt` serve perché la chiama un webhook del database, non un utente.
 
-## 4) Database Webhook su nuovi messaggi
-Dashboard → **Database → Webhooks → Create a new hook**:
-- Table: `messages`
-- Events: **Insert**
-- Type: **HTTP Request**, Method **POST**
-- URL: `https://<PROJECT_REF>.supabase.co/functions/v1/send-push`
-- HTTP Headers:
-  - `Content-Type: application/json`
-  - `Authorization: Bearer <ANON_KEY>`  ← la stessa anon key dell'app
+## 4) Collega i messaggi alla funzione
+Se nella tua dashboard esiste **Database → Webhooks**, puoi usare quello
+(Insert su `messages` → POST a `functions/v1/send-push` con header
+`Authorization: Bearer <ANON_KEY>`).
 
-Salva. Da ora ogni nuovo messaggio invia una push al destinatario.
+Se **NON** vedi "Webhooks" (dashboard recenti), usa il modo via SQL — più
+affidabile: apri **SQL Editor**, incolla `supabase/push_webhook.sql` DOPO aver
+sostituito `<REF>` (sigla progetto dall'URL) e `<ANON_KEY>` (Project Settings →
+API, o il file locale `bruma.env.json`), poi **Run**. Crea un trigger che
+chiama la funzione a ogni nuovo messaggio (chiamata asincrona via pg_net).
 
 ## 5) Prova
 1. Sul telefono apri la PWA installata → **Attiva notifiche** → consenti.
