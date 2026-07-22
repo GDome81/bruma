@@ -1,5 +1,6 @@
 # Bruma — segreti / config locale (NON committare)
 bruma.env.json
+bruma-push-secrets.txt
 *.keystore
 *.jks
 key.properties
