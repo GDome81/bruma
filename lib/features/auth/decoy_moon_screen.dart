@@ -54,6 +54,22 @@ class _DecoyMoonScreenState extends State<DecoyMoonScreen>
     return (frac * 100).round();
   }
 
+  Future<void> _pickDate() async {
+    final first = DateTime(1900);
+    final last = DateTime(2100);
+    var init = _date;
+    if (init.isBefore(first)) init = first;
+    if (init.isAfter(last)) init = last;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: init,
+      firstDate: first,
+      lastDate: last,
+      helpText: 'Scegli una data',
+    );
+    if (picked != null && mounted) setState(() => _date = picked);
+  }
+
   void _submit() {
     final text = _field.text.trim();
     // Sblocco nascosto: se è il PIN, sblocca.
@@ -92,7 +108,11 @@ class _DecoyMoonScreenState extends State<DecoyMoonScreen>
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9/\-. ]')),
                 ],
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.event),
+                  prefixIcon: IconButton(
+                    icon: const Icon(Icons.calendar_month),
+                    tooltip: 'Scegli dal calendario',
+                    onPressed: _pickDate,
+                  ),
                   hintText: 'Vai a una data (gg/mm/aaaa)',
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
