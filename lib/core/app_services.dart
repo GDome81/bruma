@@ -7,9 +7,12 @@ import 'package:local_auth/local_auth.dart';
 import 'package:sodium_libs/sodium_libs.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'config.dart';
 import 'crypto/crypto_service.dart';
 import 'local_prefs.dart';
 import 'models/models.dart';
+import 'notifications.dart';
+import 'notify_platform.dart';
 import 'secure_screen.dart';
 import 'secure_store/key_store.dart';
 import 'supabase/access_repository.dart';
@@ -325,6 +328,31 @@ class AppServices {
       );
     } catch (_) {
       return false;
+    }
+  }
+
+  // --- Notifiche / Web Push ------------------------------------------------
+
+  /// Chiede il permesso notifiche e, sul web, registra una Web Push salvando
+  /// la subscription su Supabase (per le notifiche ad app chiusa/sospesa).
+  /// Ritorna un messaggio pronto per la UI.
+  Future<String> enablePush() async {
+    await NotificationService.requestPermission();
+    if (!kIsWeb) return 'Notifiche attivate.';
+    final sub = await subscribeWebPush(AppConfig.vapidPublicKey);
+    if (sub == null) {
+      return 'Permesso non concesso o push non supportato da questo browser.';
+    }
+    try {
+      await client.from('push_subscriptions').upsert({
+        'user_id': uid,
+        'endpoint': sub['endpoint'],
+        'p256dh': sub['p256dh'],
+        'auth': sub['auth'],
+      }, onConflict: 'endpoint');
+      return 'Notifiche attivate su questo dispositivo.';
+    } catch (e) {
+      return 'Push registrato ma salvataggio non riuscito: $e';
     }
   }
 

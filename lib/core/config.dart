@@ -13,6 +13,15 @@ class AppConfig {
   /// Bucket Storage per le foto cifrate (deve combaciare con la migration SQL).
   static const String photosBucket = 'photos';
 
+  /// Chiave PUBBLICA VAPID per le Web Push (non è segreta: sta nel client).
+  /// La chiave PRIVATA corrispondente va SOLO nei secret della Edge Function.
+  /// Sovrascrivibile a build-time con --dart-define=VAPID_PUBLIC_KEY=...
+  static const String vapidPublicKey = String.fromEnvironment(
+    'VAPID_PUBLIC_KEY',
+    defaultValue:
+        'BLaSx24EtYwcukwWWYfLZzQ5NMhY-dzcUgiKHpw2vkh8ko3OpUpFSqU5WZ_gj9N8Chl9-EAey2ACQEsc234WFdI',
+  );
+
   /// Tag di build (impostato dalla CI via `--dart-define=BUILD_TAG=<sha>`).
   /// Serve a verificare quale versione è effettivamente in esecuzione.
   static const String buildTag =

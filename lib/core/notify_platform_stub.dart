@@ -4,4 +4,7 @@ Future<void> requestWebPermission() async {}
 
 bool webNotificationsGranted() => false;
 
+Future<Map<String, String>?> subscribeWebPush(String vapidPublicKey) async =>
+    null;
+
 Future<void> showWebNotification(String title, String body) async {}

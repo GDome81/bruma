@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import '../../core/app_services.dart';
 import '../../core/config.dart';
 import '../../core/local_prefs.dart';
-import '../../core/notifications.dart';
 import '../../shared/widgets.dart';
 
 /// Impostazioni di sicurezza: PIN di blocco (+ biometria su APK) e versione.
@@ -136,8 +135,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                 'Avvisi anonimi (🌙). Sul web arrivano mentre l\'app resta '
                 'aperta anche in background.'),
             onTap: () async {
-              await NotificationService.requestPermission();
-              _snack('Se richiesto, consenti le notifiche dal browser/sistema.');
+              final msg = await AppServices.instance.enablePush();
+              _snack(msg);
             },
           ),
           const Divider(),
