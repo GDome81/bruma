@@ -339,11 +339,8 @@ class AppServices {
   Future<String> enablePush() async {
     await NotificationService.requestPermission();
     if (!kIsWeb) return 'Notifiche attivate.';
-    final sub = await subscribeWebPush(AppConfig.vapidPublicKey);
-    if (sub == null) {
-      return 'Permesso non concesso o push non supportato da questo browser.';
-    }
     try {
+      final sub = await subscribeWebPush(AppConfig.vapidPublicKey);
       await client.from('push_subscriptions').upsert({
         'user_id': uid,
         'endpoint': sub['endpoint'],
@@ -352,7 +349,7 @@ class AppServices {
       }, onConflict: 'endpoint');
       return 'Notifiche attivate su questo dispositivo.';
     } catch (e) {
-      return 'Push registrato ma salvataggio non riuscito: $e';
+      return 'Push non attivato — $e';
     }
   }
 

@@ -4,7 +4,7 @@ Future<void> requestWebPermission() async {}
 
 bool webNotificationsGranted() => false;
 
-Future<Map<String, String>?> subscribeWebPush(String vapidPublicKey) async =>
-    null;
+Future<Map<String, String>> subscribeWebPush(String vapidPublicKey) async =>
+    throw UnsupportedError('Web Push disponibile solo sul web');
 
 Future<void> showWebNotification(String title, String body) async {}

@@ -34,38 +34,51 @@ bool webNotificationsGranted() {
 }
 
 /// Registra un Web Push su questo dispositivo e ritorna
-/// {endpoint, p256dh, auth} da salvare sul server, oppure null se non è
-/// possibile (permesso negato, niente Push API, ecc.).
-Future<Map<String, String>?> subscribeWebPush(String vapidPublicKey) async {
+/// {endpoint, p256dh, auth} da salvare sul server. LANCIA un'eccezione con un
+/// messaggio specifico a ogni possibile punto di fallimento (per diagnostica).
+Future<Map<String, String>> subscribeWebPush(String vapidPublicKey) async {
+  if (!html.Notification.supported) {
+    throw Exception('Notifiche non supportate dal browser');
+  }
+  final perm = html.Notification.permission;
+  if (perm != 'granted') {
+    throw Exception('permesso = ${perm ?? "sconosciuto"}');
+  }
+  final sw = html.window.navigator.serviceWorker;
+  if (sw == null) throw Exception('serviceWorker non disponibile');
+
+  // SW dedicato al push, scope "push/" per non sostituire quello di Flutter.
+  final html.ServiceWorkerRegistration reg;
   try {
-    if (!webNotificationsGranted()) return null;
-    final sw = html.window.navigator.serviceWorker;
-    if (sw == null) return null;
+    reg = await sw.register('push-sw.js', {'scope': 'push/'});
+  } catch (e) {
+    throw Exception('registrazione SW fallita: $e');
+  }
 
-    // SW dedicato al push, con scope "push/" per non sostituire quello di
-    // Flutter (caching), che vive su "./".
-    final reg = await sw.register('push-sw.js', {'scope': 'push/'});
+  // Attendi che il worker sia attivo prima di sottoscrivere (max ~5s).
+  for (var i = 0; i < 50 && reg.active == null; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+  final pm = reg.pushManager;
+  if (pm == null) throw Exception('pushManager non disponibile');
 
-    // Attendi che il worker sia attivo prima di sottoscrivere (max ~3s).
-    for (var i = 0; i < 30 && reg.active == null; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
-    final pm = reg.pushManager;
-    if (pm == null) return null;
-
-    final sub = await pm.subscribe({
+  final html.PushSubscription sub;
+  try {
+    sub = await pm.subscribe({
       'userVisibleOnly': true,
       'applicationServerKey': _vapidKeyToBytes(vapidPublicKey),
     });
-
-    final endpoint = sub.endpoint;
-    final p256dh = _keyToBase64Url(sub.getKey('p256dh'));
-    final auth = _keyToBase64Url(sub.getKey('auth'));
-    if (endpoint == null || p256dh == null || auth == null) return null;
-    return {'endpoint': endpoint, 'p256dh': p256dh, 'auth': auth};
-  } catch (_) {
-    return null;
+  } catch (e) {
+    throw Exception('subscribe: $e');
   }
+
+  final endpoint = sub.endpoint;
+  final p256dh = _keyToBase64Url(sub.getKey('p256dh'));
+  final auth = _keyToBase64Url(sub.getKey('auth'));
+  if (endpoint == null || p256dh == null || auth == null) {
+    throw Exception('chiavi subscription mancanti');
+  }
+  return {'endpoint': endpoint, 'p256dh': p256dh, 'auth': auth};
 }
 
 Uint8List _vapidKeyToBytes(String base64Url) {
