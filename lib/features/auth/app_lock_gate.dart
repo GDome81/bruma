@@ -44,9 +44,14 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
         state == AppLifecycleState.paused) {
       // Perdita del focus / background: copri SUBITO i contenuti (così
       // l'anteprima nella gallery delle app recenti mostra la copertura, non
-      // la chat). Il PIN scatterà solo se l'app è stata davvero messa in
-      // background (`paused`), non per un blur transitorio (es. file picker).
-      if (state == AppLifecycleState.paused) _wasPaused = true;
+      // la chat). Il PIN scatta se l'app è stata davvero messa in background:
+      // `hidden` (tab/PWA nascosta — su web NON arriva `paused`) o `paused`
+      // (Android nativo). Il semplice `inactive` (blur transitorio, es. file
+      // picker) copre soltanto, senza richiedere il PIN al ritorno.
+      if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.hidden) {
+        _wasPaused = true;
+      }
       if (mounted && !_locked && !_covered) setState(() => _covered = true);
     } else if (state == AppLifecycleState.resumed) {
       final needLock = _wasPaused;
