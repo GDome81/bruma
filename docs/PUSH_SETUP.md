@@ -24,7 +24,7 @@ Imposta i secret della Edge Function (la private key qui):
 ```
 supabase secrets set VAPID_PUBLIC_KEY=BLaSx24EtYwcukwWWYfLZzQ5NMhY-dzcUgiKHpw2vkh8ko3OpUpFSqU5WZ_gj9N8Chl9-EAey2ACQEsc234WFdI
 supabase secrets set VAPID_PRIVATE_KEY=<LA_TUA_CHIAVE_PRIVATA>
-supabase secrets set VAPID_SUBJECT=mailto:domenico.giacobino@enginius.com
+supabase secrets set VAPID_SUBJECT=mailto:tua-email@esempio.com
 ```
 (`SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` sono iniettati in automatico.)
 
