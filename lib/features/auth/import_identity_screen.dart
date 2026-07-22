@@ -45,7 +45,10 @@ class _ImportIdentityScreenState extends State<ImportIdentityScreen> {
     await Future<void>.delayed(Duration.zero);
     try {
       await AppServices.instance.importIdentity(_data.text, _pw.text);
-      widget.onCompleted();
+      if (!mounted) return;
+      final done = widget.onCompleted;
+      Navigator.of(context).pop(); // chiude questa schermata (basta un tap)
+      done();
     } catch (e) {
       if (mounted) {
         setState(() {

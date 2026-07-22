@@ -135,11 +135,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
               if (v == 'import') {
                 Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => ImportIdentityScreen(
-                    onCompleted: () {
-                      Navigator.of(context).pop();
-                      _snack(
-                          'Identità importata. Riapri l\'app per aggiornare tutte le chat.');
-                    },
+                    // La schermata si chiude da sola: qui solo la notifica.
+                    onCompleted: () => _snack(
+                        'Identità importata. Riapri l\'app per aggiornare tutte le chat.'),
                   ),
                 ));
               }
