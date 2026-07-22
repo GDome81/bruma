@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../local_prefs.dart';
 import '../models/models.dart';
 import 'messages_repository.dart';
 import 'profile_repository.dart';
@@ -47,15 +48,21 @@ class ConversationsRepository {
         convs.map((c) => c.otherUserId(_uid)).toSet().toList();
     final profiles = await _profiles.getProfilesByIds(otherIds);
 
-    final views = <ConversationView>[];
-    for (final c in convs) {
+    // In parallelo per ogni conversazione: ultimo messaggio + conteggio non letti.
+    final views = await Future.wait(convs.map((c) async {
       final otherId = c.otherUserId(_uid);
       final other = profiles[otherId] ??
           Profile(id: otherId, displayName: 'Sconosciuto', publicKey: '');
       final last = await _messages.lastMessage(c.id);
-      views.add(ConversationView(
-          conversation: c, other: other, lastMessage: last));
-    }
+      final unread =
+          await _messages.unreadCount(c.id, LocalPrefs.lastRead(c.id));
+      return ConversationView(
+        conversation: c,
+        other: other,
+        lastMessage: last,
+        unread: unread,
+      );
+    }));
 
     views.sort((a, b) {
       final ta = a.lastMessage?.createdAt;

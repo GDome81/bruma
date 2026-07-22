@@ -18,6 +18,28 @@ class LocalPrefs {
   static bool get panic => _p?.getBool('panic_mode') ?? false;
   static Future<void> setPanic(bool v) async => _p?.setBool('panic_mode', v);
 
+  // --- Blocco app con PIN (+ biometria su APK) -----------------------------
+  static bool get appLockEnabled => _p?.getBool('app_lock_enabled') ?? false;
+  static Future<void> setAppLockEnabled(bool v) async =>
+      _p?.setBool('app_lock_enabled', v);
+
+  static bool get lockUseBiometric => _p?.getBool('lock_biometric') ?? true;
+  static Future<void> setLockUseBiometric(bool v) async =>
+      _p?.setBool('lock_biometric', v);
+
+  static String? get pinSalt => _p?.getString('pin_salt');
+  static String? get pinHash => _p?.getString('pin_hash');
+  static Future<void> setPin(String salt, String hash) async {
+    await _p?.setString('pin_salt', salt);
+    await _p?.setString('pin_hash', hash);
+  }
+
+  static Future<void> clearPin() async {
+    await _p?.remove('pin_salt');
+    await _p?.remove('pin_hash');
+    await _p?.setBool('app_lock_enabled', false);
+  }
+
   // --- Ultimo messaggio letto per conversazione ----------------------------
   static DateTime? lastRead(String conversationId) {
     final s = _p?.getString('lastread_$conversationId');

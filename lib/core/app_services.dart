@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -7,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'crypto/crypto_service.dart';
 import 'local_prefs.dart';
 import 'models/models.dart';
+import 'secure_screen.dart';
 import 'secure_store/key_store.dart';
 import 'supabase/access_repository.dart';
 import 'supabase/auth_repository.dart';
@@ -261,6 +263,45 @@ class AppServices {
       await storage.removeMany(paths);
     } catch (_) {
       // best-effort
+    }
+  }
+
+  // --- Blocco app con PIN --------------------------------------------------
+
+  bool _lockSecureHeld = false;
+
+  bool get lockEnabled => LocalPrefs.appLockEnabled;
+
+  Future<void> setPin(String pin) async {
+    final salt = crypto.randomSalt();
+    final hash = crypto.hashPin(pin, salt);
+    await LocalPrefs.setPin(base64Encode(salt), hash);
+    await LocalPrefs.setAppLockEnabled(true);
+    applyLockFlagSecure();
+  }
+
+  bool verifyPin(String pin) {
+    final saltB64 = LocalPrefs.pinSalt;
+    final hash = LocalPrefs.pinHash;
+    if (saltB64 == null || hash == null) return false;
+    return crypto.hashPin(pin, base64Decode(saltB64)) == hash;
+  }
+
+  Future<void> disableLock() async {
+    await LocalPrefs.clearPin();
+    applyLockFlagSecure();
+  }
+
+  /// Tiene FLAG_SECURE attivo (anteprima recents nera su Android) finché il
+  /// blocco è attivo. Il viewer foto si somma sopra questo "base".
+  void applyLockFlagSecure() {
+    final want = LocalPrefs.appLockEnabled;
+    if (want && !_lockSecureHeld) {
+      SecureScreenGuard.acquire();
+      _lockSecureHeld = true;
+    } else if (!want && _lockSecureHeld) {
+      SecureScreenGuard.release();
+      _lockSecureHeld = false;
     }
   }
 

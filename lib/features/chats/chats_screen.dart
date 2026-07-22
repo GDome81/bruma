@@ -1,10 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:local_auth/local_auth.dart';
 
 import '../../core/app_services.dart';
-import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../shared/widgets.dart';
 import '../auth/export_identity_screen.dart';
@@ -12,6 +10,7 @@ import '../auth/import_identity_screen.dart';
 import '../contacts/add_contact_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../conversation/conversation_screen.dart';
+import '../settings/app_settings_screen.dart';
 
 /// Lista delle conversazioni, in stile WhatsApp semplificato.
 class ChatsScreen extends StatefulWidget {
@@ -70,28 +69,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
         .showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<void> _toggleBiometric() async {
-    final enabling = !LocalPrefs.biometricEnabled;
-    if (enabling) {
-      try {
-        final supported = await LocalAuthentication().isDeviceSupported();
-        if (!supported) {
-          _snack('Nessun blocco schermo o biometria configurato sul dispositivo.');
-          return;
-        }
-      } catch (_) {
-        _snack('Biometria non disponibile su questo dispositivo.');
-        return;
-      }
-    }
-    await LocalPrefs.setBiometricEnabled(enabling);
-    if (!mounted) return;
-    setState(() {});
-    _snack(enabling
-        ? 'Blocco biometrico attivato (attivo alla prossima riapertura).'
-        : 'Blocco biometrico disattivato.');
-  }
-
   void _openConversation(ConversationView v) {
     Navigator.of(context)
         .push(MaterialPageRoute(
@@ -127,7 +104,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'signout') AppServices.instance.signOut();
-              if (v == 'biometric') _toggleBiometric();
+              if (v == 'security') {
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const AppSettingsScreen()));
+              }
               if (v == 'export') {
                 Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const ExportIdentityScreen()));
@@ -151,11 +131,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 ),
               ),
               const PopupMenuDivider(),
-              CheckedPopupMenuItem(
-                value: 'biometric',
-                checked: LocalPrefs.biometricEnabled,
-                child: const Text('Blocco biometrico'),
-              ),
+              const PopupMenuItem(
+                  value: 'security', child: Text('Sicurezza')),
               const PopupMenuItem(
                   value: 'export', child: Text('Esporta identità')),
               const PopupMenuItem(
@@ -217,44 +194,75 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 
   Widget _tile(ConversationView v) {
-    final me = AppServices.instance.uid;
+    final cs = Theme.of(context).colorScheme;
     final last = v.lastMessage;
-    String preview;
-    if (last == null) {
-      preview = 'Nessun messaggio';
-    } else {
-      final mine = last.senderId == me;
-      final body = last.type == MessageType.photo
-          ? 'Foto'
-          : 'Messaggio cifrato';
-      preview = mine ? 'Tu: $body' : body;
-    }
+    final unread = v.unread;
+    final hasUnread = unread > 0;
     final trimmed = v.other.displayName.trim();
     final initials = trimmed.isNotEmpty ? trimmed[0].toUpperCase() : '?';
+    // Nessuna anteprima del contenuto: solo nome, orario e "pallino" col
+    // numero di messaggi da leggere.
     return ListTile(
-      leading: CircleAvatar(child: Text(initials)),
-      title: Text(v.other.displayName),
-      subtitle: Row(
+      leading: Stack(
+        clipBehavior: Clip.none,
         children: [
-          Icon(
-            last?.type == MessageType.photo
-                ? Icons.photo_camera_outlined
-                : Icons.lock_outline,
-            size: 14,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(preview,
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
+          CircleAvatar(child: Text(initials)),
+          if (hasUnread)
+            Positioned(
+              right: -1,
+              top: -1,
+              child: Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: cs.surface, width: 2),
+                ),
+              ),
+            ),
         ],
       ),
-      trailing: last == null
-          ? null
-          : Text(formatTimestamp(last.createdAt),
-              style: Theme.of(context).textTheme.labelSmall),
+      title: Text(
+        v.other.displayName,
+        style: TextStyle(
+            fontWeight: hasUnread ? FontWeight.bold : FontWeight.w500),
+      ),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (last != null)
+            Text(
+              formatTimestamp(last.createdAt),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: hasUnread ? cs.primary : null,
+                  fontWeight: hasUnread ? FontWeight.bold : null),
+            ),
+          const SizedBox(height: 6),
+          if (hasUnread) _unreadBadge(unread, cs) else const SizedBox(height: 18),
+        ],
+      ),
       onTap: () => _openConversation(v),
+    );
+  }
+
+  Widget _unreadBadge(int n, ColorScheme cs) {
+    final label = n > 99 ? '99+' : '$n';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 20),
+      height: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        color: cs.primary,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: TextStyle(
+            color: cs.onPrimary, fontSize: 12, fontWeight: FontWeight.bold),
+      ),
     );
   }
 }

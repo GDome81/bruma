@@ -62,5 +62,26 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
 
+  # Genera icone launcher (Android) + favicon/PWA (web) dal logo.
+  flutter_launcher_icons: ^0.14.1
+
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo.jpeg
+
+# Icone generate dal logo (crescente argento). Rigenerare con:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/logo.jpeg"
+  min_sdk_android: 21
+  # Icona adattiva Android: sfondo bianco (il logo è argento su bianco).
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/logo.jpeg"
+  web:
+    generate: true
+    image_path: "assets/logo.jpeg"
+    background_color: "#FFFFFF"
+    theme_color: "#1A1526"

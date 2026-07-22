@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_services.dart';
+import '../../shared/bruma_logo.dart';
 
 /// Login / registrazione con email + password (Supabase Auth).
 class AuthScreen extends StatefulWidget {
@@ -76,14 +77,14 @@ class _AuthScreenState extends State<AuthScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.blur_on, size: 64, color: cs.primary),
-                    const SizedBox(height: 8),
+                    const Center(child: BrumaLogo(size: 104)),
+                    const SizedBox(height: 12),
                     Text('Bruma',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.headlineMedium),
                     const SizedBox(height: 4),
                     Text(
-                      'Messaggi e foto che appaiono e si dissolvono.',
+                      'La bruma custodisce la luna, e la svela solo per te.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),

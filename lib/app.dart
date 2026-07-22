@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/app_services.dart';
+import 'features/auth/app_lock_gate.dart';
 import 'features/auth/auth_screen.dart';
-import 'features/auth/biometric_gate.dart';
 import 'features/auth/decoy_screen.dart';
 import 'features/auth/onboarding_screen.dart';
 import 'features/auth/panic_button.dart';
@@ -128,7 +128,7 @@ class _IdentityGateState extends State<IdentityGate> {
           return RecoveryScreen(onCompleted: _reload);
         }
         return const NotificationHost(
-          child: BiometricGate(child: ChatsScreen()),
+          child: AppLockGate(child: ChatsScreen()),
         );
       },
     );

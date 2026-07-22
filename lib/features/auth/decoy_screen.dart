@@ -72,6 +72,11 @@ class _DecoyScreenState extends State<DecoyScreen> {
   }
 
   void _equals() {
+    // Sblocco nascosto: digita il PIN e premi "=" (senza operazioni in corso).
+    if (_op == null && AppServices.instance.verifyPin(_display)) {
+      _unlock();
+      return;
+    }
     setState(() {
       _compute();
       _op = null;

@@ -336,19 +336,43 @@ class _ConversationScreenState extends State<ConversationScreen> {
               child: Image.memory(bytes, fit: BoxFit.contain),
             ),
           ),
-          persistentFooterAlignment: AlignmentDirectional.center,
-          persistentFooterButtons: [
-            OutlinedButton.icon(
-              onPressed: () => Navigator.pop(ctx, false),
-              icon: const Icon(Icons.close),
-              label: const Text('Annulla'),
+          // Barra fissa: tasti affiancati e sempre visibili (anche web mobile).
+          bottomNavigationBar: Container(
+            color: Colors.black,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white54),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        icon: const Icon(Icons.close),
+                        label: const Text('Annulla'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        icon: const Icon(Icons.send),
+                        label: const Text('Invia'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            FilledButton.icon(
-              onPressed: () => Navigator.pop(ctx, true),
-              icon: const Icon(Icons.send),
-              label: const Text('Invia'),
-            ),
-          ],
+          ),
         ),
       ),
     );

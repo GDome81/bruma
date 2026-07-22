@@ -83,11 +83,16 @@ class ConversationView {
     required this.conversation,
     required this.other,
     this.lastMessage,
+    this.unread = 0,
   });
 
   final Conversation conversation;
   final Profile other;
   final Message? lastMessage;
+
+  /// Numero di messaggi dell'altro non ancora letti (calcolato localmente
+  /// rispetto all'ultimo messaggio letto salvato in LocalPrefs).
+  final int unread;
 }
 
 class Message {

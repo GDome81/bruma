@@ -427,7 +427,7 @@ class _ReadReceipt extends StatefulWidget {
 }
 
 class _ReadReceiptState extends State<_ReadReceipt> {
-  MessageAccess? _a;
+  bool _read = false;
 
   @override
   void initState() {
@@ -444,34 +444,22 @@ class _ReadReceiptState extends State<_ReadReceipt> {
 
   Future<void> _fetch() async {
     try {
-      final a = await AppServices.instance.access
-          .getRecipientAccess(widget.message.id);
-      if (mounted) setState(() => _a = a);
+      // "Letto" = il destinatario ha un evento 'granted' (vale anche per i
+      // testi, che non incrementano open_count perché senza protezione).
+      final read =
+          await AppServices.instance.stats.wasReadByRecipient(widget.message.id);
+      if (mounted) setState(() => _read = read);
     } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final a = _a;
-    // Distinzione per CONTEO di spunte (accessibile ai daltonici):
-    // 1 = inviato, 2 = consegnato, 3 = letto (+ blu come bonus).
-    final int count;
-    final Color color;
-    final String tip;
-    if (a == null) {
-      count = 1;
-      color = cs.onSurfaceVariant;
-      tip = 'Inviato';
-    } else if (a.openCount > 0) {
-      count = 3;
-      color = _readBlue;
-      tip = 'Letto';
-    } else {
-      count = 2;
-      color = cs.onSurfaceVariant;
-      tip = 'Consegnato';
-    }
+    // Distinzione per CONTEGGIO di spunte (accessibile ai daltonici):
+    // 2 = consegnato, 3 = letto (+ blu come bonus visivo).
+    final int count = _read ? 3 : 2;
+    final Color color = _read ? _readBlue : cs.onSurfaceVariant;
+    final String tip = _read ? 'Letto' : 'Consegnato';
     return Tooltip(
       message: tip,
       child: Row(

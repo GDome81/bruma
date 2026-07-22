@@ -13,6 +13,14 @@ class AppConfig {
   /// Bucket Storage per le foto cifrate (deve combaciare con la migration SQL).
   static const String photosBucket = 'photos';
 
+  /// Tag di build (impostato dalla CI via `--dart-define=BUILD_TAG=<sha>`).
+  /// Serve a verificare quale versione è effettivamente in esecuzione.
+  static const String buildTag =
+      String.fromEnvironment('BUILD_TAG', defaultValue: 'dev');
+
+  static String get shortBuild =>
+      buildTag.length > 7 ? buildTag.substring(0, 7) : buildTag;
+
   static bool get isConfigured =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 

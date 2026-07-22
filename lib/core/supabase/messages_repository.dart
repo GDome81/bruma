@@ -30,6 +30,24 @@ class MessagesRepository {
         .map((rows) => rows.map(Message.fromMap).toList());
   }
 
+  /// Numero di messaggi dell'ALTRO non letti (creati dopo [since]), fino a un
+  /// tetto per non caricare troppo. Se [since] è null la chat non è mai stata
+  /// aperta: conta tutti i messaggi ricevuti (fino al tetto).
+  Future<int> unreadCount(String conversationId, DateTime? since,
+      {int cap = 99}) async {
+    var q = _client
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', _uid)
+        .filter('deleted_at', 'is', null);
+    if (since != null) {
+      q = q.gt('created_at', since.toUtc().toIso8601String());
+    }
+    final rows = await q.limit(cap + 1);
+    return rows.length;
+  }
+
   Future<Message?> lastMessage(String conversationId) async {
     final row = await _client
         .from('messages')
@@ -277,6 +295,49 @@ class MessagesRepository {
       callback: (_) => onChange(),
     ).subscribe();
     return channel;
+  }
+
+  /// Conteggi generici per le statistiche: messaggi/foto inviati e ricevuti
+  /// (esclusi i messaggi eliminati).
+  Future<({int sent, int received, int sentPhotos, int receivedPhotos})>
+      conversationCounts(String conversationId) async {
+    final rows = await _client
+        .from('messages')
+        .select('sender_id,type')
+        .eq('conversation_id', conversationId)
+        .filter('deleted_at', 'is', null);
+    int sent = 0, received = 0, sentPhotos = 0, receivedPhotos = 0;
+    for (final r in rows) {
+      final mine = r['sender_id'] == _uid;
+      final isPhoto = r['type'] == 'photo';
+      if (mine) {
+        sent++;
+        if (isPhoto) sentPhotos++;
+      } else {
+        received++;
+        if (isPhoto) receivedPhotos++;
+      }
+    }
+    return (
+      sent: sent,
+      received: received,
+      sentPhotos: sentPhotos,
+      receivedPhotos: receivedPhotos
+    );
+  }
+
+  /// Le foto inviate da me nella conversazione (per la classifica statistiche),
+  /// più recenti prima. Esclude le eliminate.
+  Future<List<Message>> myPhotoMessages(String conversationId) async {
+    final rows = await _client
+        .from('messages')
+        .select()
+        .eq('conversation_id', conversationId)
+        .eq('sender_id', _uid)
+        .eq('type', 'photo')
+        .filter('deleted_at', 'is', null)
+        .order('created_at', ascending: false);
+    return rows.map(Message.fromMap).toList();
   }
 
   /// Path Storage delle foto inviate da me in una conversazione (per la

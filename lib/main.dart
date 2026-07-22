@@ -26,6 +26,9 @@ Future<void> main() async {
   await LocalPrefs.init();
   await NotificationService.init();
   AppServices.instance.panicMode.value = LocalPrefs.panic;
+  // Se il blocco PIN è attivo, applica subito FLAG_SECURE (anteprima nera
+  // nei recenti su Android).
+  AppServices.instance.applyLockFlagSecure();
 
   runApp(const BrumaApp());
 }

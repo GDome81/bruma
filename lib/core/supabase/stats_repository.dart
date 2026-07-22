@@ -10,6 +10,21 @@ class StatsRepository {
 
   String get _uid => _client.auth.currentUser!.id;
 
+  /// Vero se il DESTINATARIO ha aperto (outcome 'granted') il messaggio almeno
+  /// una volta. Usato per la terza spunta "letto": vale anche per i testi, che
+  /// hanno protezione off e quindi non incrementano `open_count`, ma registrano
+  /// comunque un evento 'granted'.
+  Future<bool> wasReadByRecipient(String messageId) async {
+    final rows = await _client
+        .from('open_events')
+        .select('id')
+        .eq('message_id', messageId)
+        .eq('outcome', 'granted')
+        .neq('recipient_id', _uid) // escludi le riletture del mittente
+        .limit(1);
+    return rows.isNotEmpty;
+  }
+
   Future<List<OpenEvent>> eventsForMessage(String messageId) async {
     final rows = await _client
         .from('open_events')

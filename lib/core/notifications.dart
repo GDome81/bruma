@@ -1,12 +1,16 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-/// Notifiche locali (fase 1). Contenuto GENERICO: nessun mittente né testo,
-/// per non esporre metadati sensibili al sistema notifiche.
+import 'notify_platform.dart';
+
+/// Notifiche locali. Contenuto ANONIMO: solo una luna 🌙, nessun mittente,
+/// testo o nome di chat, per non esporre nulla al sistema di notifiche.
 ///
-/// Limite noto: mostrate solo mentre il processo dell'app è vivo
-/// (foreground/background non ucciso). Le notifiche ad app chiusa arriveranno
-/// con FCM (fase 2).
+/// - Mobile/desktop: flutter_local_notifications (mentre il processo è vivo).
+/// - Web/PWA: Notification API del browser (mentre la scheda/PWA è viva, anche
+///   in background non sospeso).
+///
+/// Notifiche ad app COMPLETAMENTE chiusa → serviranno FCM/Push (fase 2).
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -22,7 +26,10 @@ class NotificationService {
   }
 
   static Future<void> requestPermission() async {
-    if (kIsWeb) return;
+    if (kIsWeb) {
+      await requestWebPermission();
+      return;
+    }
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
@@ -30,16 +37,22 @@ class NotificationService {
   }
 
   static Future<void> showGenericMessage() async {
-    if (kIsWeb || !_ready) return;
+    if (kIsWeb) {
+      // Titolo/corpo volutamente anonimi: solo la luna.
+      showWebNotification('Bruma', '🌙');
+      return;
+    }
+    if (!_ready) return;
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'bruma_messages',
-        'Messaggi',
-        channelDescription: 'Nuovi messaggi in Bruma',
+        'Aggiornamenti',
+        channelDescription: 'Notifiche anonime di Bruma',
         importance: Importance.high,
         priority: Priority.high,
       ),
     );
-    await _plugin.show(0, 'Bruma', 'Nuovo messaggio', details);
+    // Nessun nome né testo: solo la luna.
+    await _plugin.show(0, 'Bruma', '🌙', details);
   }
 }

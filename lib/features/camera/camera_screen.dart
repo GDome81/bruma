@@ -97,9 +97,25 @@ class _CameraScreenState extends State<CameraScreen>
     if (b != null) Navigator.of(context).pop<Uint8List>(b);
   }
 
-  void _retake() => setState(() => _preview = null);
+  /// Torna alla fotocamera dal vivo. Su web (e a volte su mobile) il flusso
+  /// video si blocca dopo lo scatto: riavviamo il controller per essere certi
+  /// di mostrare un'anteprima dal vivo e non l'ultimo fotogramma congelato.
+  Future<void> _retake() async {
+    if (!mounted) return;
+    setState(() {
+      _preview = null;
+      _busy = true;
+    });
+    final old = _controller;
+    _controller = null;
+    await old?.dispose();
+    if (!mounted) return;
+    await _startController(_index);
+    if (mounted) setState(() => _busy = false);
+  }
 
   Widget _previewScaffold() {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -126,20 +142,45 @@ class _CameraScreenState extends State<CameraScreen>
           ),
         ),
       ),
-      // Pinnati in fondo dallo Scaffold: SEMPRE visibili (anche su web mobile).
-      persistentFooterAlignment: AlignmentDirectional.center,
-      persistentFooterButtons: [
-        OutlinedButton.icon(
-          onPressed: _retake,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Riscatta'),
+      // Barra fissa in basso: i due tasti sono SEMPRE affiancati e visibili,
+      // anche su web mobile, sopra la barra di sistema (SafeArea).
+      bottomNavigationBar: Container(
+        color: Colors.black,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _retake,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white54),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Riscatta'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _send,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: cs.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: const Icon(Icons.send),
+                    label: const Text('Invia'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-        FilledButton.icon(
-          onPressed: _send,
-          icon: const Icon(Icons.send),
-          label: const Text('Invia'),
-        ),
-      ],
+      ),
     );
   }
 

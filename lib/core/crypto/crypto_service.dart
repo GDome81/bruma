@@ -186,6 +186,19 @@ class CryptoService {
     }
   }
 
+  // --- Hash del PIN di blocco (locale) ------------------------------------
+
+  Uint8List randomSalt() => _sodium.randombytes.buf(16);
+
+  /// Hash del PIN (BLAKE2b iterato + salt) → base64. Deterministico per salt.
+  String hashPin(String pin, Uint8List salt) {
+    var acc = Uint8List.fromList([...utf8.encode(pin), ...salt]);
+    for (var i = 0; i < 20000; i++) {
+      acc = _sodium.crypto.genericHash(message: acc, outLen: 32);
+    }
+    return base64Encode(acc);
+  }
+
   // --- Base64 helpers per il testo ----------------------------------------
 
   String encodeBlob(Uint8List blob) => base64Encode(blob);
