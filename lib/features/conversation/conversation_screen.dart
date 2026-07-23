@@ -13,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/app_services.dart';
 import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
+import '../../shared/emoji_config.dart';
 import '../../shared/widgets.dart';
 import '../camera/camera_screen.dart';
 import '../settings/chat_settings_screen.dart';
@@ -1012,7 +1013,10 @@ class _ConversationScreenState extends State<ConversationScreen>
           if (_showEmoji)
             SizedBox(
               height: 280,
-              child: EmojiPicker(textEditingController: _text),
+              child: EmojiPicker(
+                textEditingController: _text,
+                config: brumaEmojiConfig(context),
+              ),
             ),
         ],
       ),

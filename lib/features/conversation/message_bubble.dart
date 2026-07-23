@@ -5,6 +5,8 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../shared/emoji_config.dart';
+
 import '../../core/app_services.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
@@ -235,6 +237,7 @@ Future<String?> _pickEmoji(BuildContext context) {
       height: 320,
       child: EmojiPicker(
         onEmojiSelected: (category, emoji) => Navigator.pop(ctx, emoji.emoji),
+        config: brumaEmojiConfig(ctx),
       ),
     ),
   );
