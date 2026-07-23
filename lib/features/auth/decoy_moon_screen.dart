@@ -19,6 +19,7 @@ class _DecoyMoonScreenState extends State<DecoyMoonScreen>
     with DecoyUnlockMixin<DecoyMoonScreen> {
   final _field = TextEditingController();
   late DateTime _date = DateTime.now();
+  bool _showCalendar = false;
 
   static const _synodic = 29.530588853;
   static const _names = [
@@ -54,23 +55,16 @@ class _DecoyMoonScreenState extends State<DecoyMoonScreen>
     return (frac * 100).round();
   }
 
-  Future<void> _pickDate() async {
+  // NB: niente showDatePicker qui — la maschera è disegnata sopra il Navigator
+  // dell'app (in MaterialApp.builder) e non ne ha uno suo. Usiamo un
+  // CalendarDatePicker INLINE (widget, non dialog) mostrato in overlay dentro
+  // la schermata: nessun Navigator richiesto.
+  DateTime get _clampedDate {
     final first = DateTime(1900);
     final last = DateTime(2100);
-    var init = _date;
-    if (init.isBefore(first)) init = first;
-    if (init.isAfter(last)) init = last;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: init,
-      firstDate: first,
-      lastDate: last,
-      helpText: 'Scegli una data',
-      // La maschera vive in un Navigator dedicato (vedi app.dart): usa quello,
-      // non il root, altrimenti il dialog finirebbe dietro la maschera.
-      useRootNavigator: false,
-    );
-    if (picked != null && mounted) setState(() => _date = picked);
+    if (_date.isBefore(first)) return first;
+    if (_date.isAfter(last)) return last;
+    return _date;
   }
 
   void _submit() {
@@ -98,7 +92,9 @@ class _DecoyMoonScreenState extends State<DecoyMoonScreen>
         '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}';
     return Scaffold(
       appBar: AppBar(title: const Text('Fasi Lunari')),
-      body: SafeArea(
+      body: Stack(
+        children: [
+          SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -114,7 +110,8 @@ class _DecoyMoonScreenState extends State<DecoyMoonScreen>
                   prefixIcon: IconButton(
                     icon: const Icon(Icons.calendar_month),
                     tooltip: 'Scegli dal calendario',
-                    onPressed: _pickDate,
+                    onPressed: () =>
+                        setState(() => _showCalendar = !_showCalendar),
                   ),
                   hintText: 'Vai a una data (gg/mm/aaaa)',
                   border: const OutlineInputBorder(),
@@ -143,6 +140,38 @@ class _DecoyMoonScreenState extends State<DecoyMoonScreen>
             ],
           ),
         ),
+      ),
+          // Calendario INLINE (nessun Navigator): scrim + card centrata.
+          if (_showCalendar)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => setState(() => _showCalendar = false),
+                child: ColoredBox(
+                  color: Colors.black54,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: () {}, // assorbe i tap sulla card
+                      child: Card(
+                        margin: const EdgeInsets.all(24),
+                        child: SizedBox(
+                          width: 340,
+                          child: CalendarDatePicker(
+                            initialDate: _clampedDate,
+                            firstDate: DateTime(1900),
+                            lastDate: DateTime(2100),
+                            onDateChanged: (d) => setState(() {
+                              _date = d;
+                              _showCalendar = false;
+                            }),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

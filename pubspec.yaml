@@ -57,6 +57,10 @@ dependencies:
   # Allega foto esistenti dalla galleria
   image_picker: ^1.1.2
 
+  # Maschera "Galleria": mostra le foto vere del telefono (solo APK; su web
+  # non esiste un'API per elencare la galleria → resta la griglia finta).
+  photo_manager: ^3.6.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

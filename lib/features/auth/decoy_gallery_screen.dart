@@ -1,10 +1,16 @@
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'decoy_common.dart';
+import 'gallery_source.dart';
 
-/// Maschera "Galleria": sembra un visualizzatore di foto del telefono. Sblocco:
-/// nella barra di ricerca digita il PIN e invia (o long-press sul titolo;
-/// biometria su APK).
+/// Maschera "Galleria": sembra il visualizzatore di foto del telefono.
+/// Su APK mostra le FOTO VERE del dispositivo (photo_manager); su web, o se il
+/// permesso è negato, resta una griglia finta indistinguibile a colpo d'occhio.
+/// Sblocco nascosto: nella barra di ricerca digita il PIN e invia, oppure
+/// long-press sul titolo/miniatura (biometria su APK).
 class DecoyGalleryScreen extends StatefulWidget {
   const DecoyGalleryScreen({super.key});
 
@@ -16,6 +22,26 @@ class _DecoyGalleryScreenState extends State<DecoyGalleryScreen>
     with DecoyUnlockMixin<DecoyGalleryScreen> {
   final _search = TextEditingController();
   bool _searching = false;
+
+  List<Uint8List?>? _realThumbs; // non-null + non-vuoto = uso le foto vere
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReal();
+  }
+
+  Future<void> _loadReal() async {
+    if (kIsWeb) return; // sul web resta finta
+    try {
+      if (!await galleryRequestAccess()) return;
+      final thumbs = await galleryThumbnails(limit: 60, size: 300);
+      if (!mounted || thumbs.isEmpty) return;
+      setState(() => _realThumbs = thumbs);
+    } catch (_) {
+      // permesso negato o errore: resta la griglia finta
+    }
+  }
 
   @override
   void dispose() {
@@ -30,8 +56,14 @@ class _DecoyGalleryScreenState extends State<DecoyGalleryScreen>
     FocusScope.of(context).unfocus();
   }
 
-  // Tinte deterministiche per i finti "scatti" (nessuna vera foto).
-  List<Color> _tile(int i) {
+  void _openPhoto(int index) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _PhotoView(index: index),
+    ));
+  }
+
+  // Tinte deterministiche per i finti "scatti" (fallback senza vere foto).
+  List<Color> _fakeTile(int i) {
     final h1 = (i * 47) % 360;
     final h2 = (h1 + 40) % 360;
     return [
@@ -42,6 +74,8 @@ class _DecoyGalleryScreenState extends State<DecoyGalleryScreen>
 
   @override
   Widget build(BuildContext context) {
+    final real = _realThumbs;
+    final useReal = real != null && real.isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         title: _searching
@@ -82,11 +116,21 @@ class _DecoyGalleryScreenState extends State<DecoyGalleryScreen>
           crossAxisSpacing: 3,
           mainAxisSpacing: 3,
         ),
-        itemCount: 45,
+        itemCount: useReal ? real.length : 45,
         itemBuilder: (_, i) {
-          final c = _tile(i);
+          if (useReal) {
+            final bytes = real[i];
+            return GestureDetector(
+              onTap: () => _openPhoto(i),
+              onLongPress: longPressUnlock, // sblocco nascosto
+              child: bytes == null
+                  ? Container(color: Colors.black12)
+                  : Image.memory(bytes,
+                      fit: BoxFit.cover, gaplessPlayback: true),
+            );
+          }
+          final c = _fakeTile(i);
           return GestureDetector(
-            // Long-press anche sulle miniature → sblocco.
             onLongPress: longPressUnlock,
             child: Container(
               decoration: BoxDecoration(
@@ -112,6 +156,41 @@ class _DecoyGalleryScreenState extends State<DecoyGalleryScreen>
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Apertura a schermo intero di una foto vera (completa l'illusione).
+class _PhotoView extends StatelessWidget {
+  const _PhotoView({required this.index});
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: FutureBuilder<Uint8List?>(
+          future: galleryFullImage(index),
+          builder: (context, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const CircularProgressIndicator();
+            }
+            final bytes = snap.data;
+            if (bytes == null) {
+              return const Icon(Icons.broken_image,
+                  color: Colors.white54, size: 64);
+            }
+            return InteractiveViewer(
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            );
+          },
+        ),
       ),
     );
   }
