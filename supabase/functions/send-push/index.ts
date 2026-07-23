@@ -217,10 +217,48 @@ Deno.serve(async (req) => {
     const sound = prefs?.sound ?? true;
     const vibrate = prefs?.vibrate ?? true;
 
-    // THROTTLE: al massimo un avviso "sonoro" ogni WINDOW per utente. Dentro la
-    // finestra, il web aggiorna la 🌙 in SILENZIO e l'FCM viene saltato (FCM non
-    // fa un update silenzioso pulito del cassetto). `buzz` = questo avviso suona.
-    const windowMs = 10 * 60 * 1000;
+    // Decidiamo se questo avviso deve "suonare" (buzz) o solo aggiornare in
+    // silenzio. Due condizioni, in OR:
+    //  (1) È il PRIMO non letto: il destinatario non ha già messaggi non letti
+    //      da questo mittente in questa conversazione. Se ne ha, c'è
+    //      (presumibilmente) già una notifica pendente. "Non letto" = messaggio
+    //      del mittente SENZA un open_event 'granted' del destinatario → riusa
+    //      gli open_events già esistenti (spunta "letto"), nessun nuovo metadato.
+    //  (2) PROMEMORIA: sono passati ≥ N minuti dall'ultimo avviso sonoro (così,
+    //      se restano non letti, si ricorda comunque). Timestamp gestito SOLO
+    //      dal server (non rivela quando l'utente apre l'app).
+    const reminderMs = 10 * 60 * 1000;
+
+    let firstUnread = true;
+    try {
+      const { data: priorMsgs } = await admin
+        .from("messages")
+        .select("id")
+        .eq("conversation_id", msg.conversation_id)
+        .eq("sender_id", msg.sender_id)
+        .neq("id", msg.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      const priorIds = (priorMsgs ?? []).map((m: { id: string }) => m.id);
+      if (priorIds.length > 0) {
+        const { data: opened } = await admin
+          .from("open_events")
+          .select("message_id")
+          .eq("recipient_id", recipientId)
+          .eq("outcome", "granted")
+          .in("message_id", priorIds);
+        const openedSet = new Set(
+          (opened ?? []).map((o: { message_id: string }) => o.message_id),
+        );
+        const unread = priorIds.filter((id: string) => !openedSet.has(id));
+        firstUnread = unread.length === 0;
+      }
+    } catch (e) {
+      console.error(`BUZZ check error: ${e}`);
+      firstUnread = true; // in dubbio, meglio notificare
+    }
+
     const { data: nstate } = await admin
       .from("notif_state")
       .select("last_notified_at")
@@ -229,8 +267,10 @@ Deno.serve(async (req) => {
     const lastMs = nstate?.last_notified_at
       ? Date.parse(nstate.last_notified_at)
       : 0;
-    const buzz = (Date.now() - lastMs) >= windowMs;
-    console.log(`THROTTLE: buzz=${buzz} (last=${nstate?.last_notified_at ?? "mai"})`);
+    const reminderDue = (Date.now() - lastMs) >= reminderMs;
+
+    const buzz = firstUnread || reminderDue;
+    console.log(`BUZZ=${buzz} (firstUnread=${firstUnread}, reminderDue=${reminderDue})`);
 
     // 1) Web Push (PWA) — sempre inviato; silenzioso fuori-finestra.
     const { data: subs } = await admin
@@ -262,7 +302,7 @@ Deno.serve(async (req) => {
     // 2) FCM (APK Android) — solo quando si "suona".
     if (buzz) await sendFcm(recipientId);
 
-    // Aggiorna il timestamp solo quando si è suonato (riapre la finestra).
+    // Registra l'ora dell'ultimo avviso sonoro (per il promemoria a N minuti).
     if (buzz) {
       await admin.from("notif_state").upsert({
         user_id: recipientId,

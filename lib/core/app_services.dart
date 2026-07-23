@@ -389,6 +389,7 @@ class AppServices {
     _fcmRefreshSub ??= fcmTokenRefresh().listen(_upsertFcmToken);
   }
 
+
   // --- Preferenze notifiche (suono/vibrazione + muto per chat) -------------
   // Salvate in locale (per le notifiche in-app) e sincronizzate su Supabase
   // (best-effort) così anche la Edge Function del push le rispetta.

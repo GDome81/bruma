@@ -1,10 +1,10 @@
 -- ============================================================================
--- Throttle notifiche — un solo timestamp per utente ("ultimo avviso sonoro").
--- Usato SOLO dalla Edge Function `send-push` (service role) per limitare la
--- frequenza degli avvisi: al massimo uno "sonoro" ogni N minuti; i messaggi nel
--- mezzo aggiornano la notifica in silenzio (web) o vengono saltati (FCM).
--- RLS attiva SENZA policy: gli utenti non possono leggere/scrivere questo
--- metadato (nessuna esposizione lato client); la service role aggira la RLS.
+-- Promemoria notifiche — un solo timestamp per utente: "ultimo avviso sonoro".
+-- Scritto e letto SOLO dalla Edge Function `send-push` (service role). Serve a
+-- ri-avvisare (promemoria) se restano messaggi non letti dopo N minuti.
+-- RLS attiva SENZA policy → i client non possono né leggere né scrivere questo
+-- metadato (nessuna esposizione, nessun segnale di "app aperta"); la service
+-- role aggira la RLS.
 -- ============================================================================
 
 create table if not exists public.notif_state (
