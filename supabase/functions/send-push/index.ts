@@ -135,8 +135,9 @@ async function sendFcm(recipientId: string): Promise<void> {
   }
   console.log("FCM: access token OK, invio in corso");
 
+  // NB: l'endpoint FCM HTTP v1 termina con `messages:send` (senza `:send` → 404).
   const endpoint =
-    `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages`;
+    `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
 
   await Promise.all(tokens.map(async (t) => {
     const body = JSON.stringify({
