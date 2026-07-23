@@ -145,7 +145,12 @@ async function sendFcm(recipientId: string): Promise<void> {
         token: t.token,
         // ANONIMO: nessun nome, nessun contenuto.
         notification: { title: "Bruma", body: "🌙" },
-        android: { priority: "HIGH" },
+        android: {
+          priority: "HIGH",
+          // Collassa: una sola 🌙 nel cassetto (si aggiorna, non si impila).
+          collapse_key: "bruma",
+          notification: { tag: "bruma" },
+        },
       },
     });
     try {
@@ -203,7 +208,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (mute) return new Response("muted", { status: 200 });
 
-    // Preferenze suono/vibrazione (default: attivi) — usate dal Web Push.
+    // Preferenze suono/vibrazione (default: attivi).
     const { data: prefs } = await admin
       .from("notif_prefs")
       .select("sound,vibrate")
@@ -212,7 +217,22 @@ Deno.serve(async (req) => {
     const sound = prefs?.sound ?? true;
     const vibrate = prefs?.vibrate ?? true;
 
-    // 1) Web Push (PWA) — se il destinatario ha subscription.
+    // THROTTLE: al massimo un avviso "sonoro" ogni WINDOW per utente. Dentro la
+    // finestra, il web aggiorna la 🌙 in SILENZIO e l'FCM viene saltato (FCM non
+    // fa un update silenzioso pulito del cassetto). `buzz` = questo avviso suona.
+    const windowMs = 10 * 60 * 1000;
+    const { data: nstate } = await admin
+      .from("notif_state")
+      .select("last_notified_at")
+      .eq("user_id", recipientId)
+      .maybeSingle();
+    const lastMs = nstate?.last_notified_at
+      ? Date.parse(nstate.last_notified_at)
+      : 0;
+    const buzz = (Date.now() - lastMs) >= windowMs;
+    console.log(`THROTTLE: buzz=${buzz} (last=${nstate?.last_notified_at ?? "mai"})`);
+
+    // 1) Web Push (PWA) — sempre inviato; silenzioso fuori-finestra.
     const { data: subs } = await admin
       .from("push_subscriptions")
       .select("id,endpoint,p256dh,auth")
@@ -221,8 +241,8 @@ Deno.serve(async (req) => {
       const body = JSON.stringify({
         title: "Bruma",
         body: "🌙",
-        silent: !sound,
-        vibrate,
+        silent: !buzz || !sound,
+        vibrate: buzz && vibrate,
       });
       await Promise.all(subs.map(async (s) => {
         try {
@@ -239,8 +259,16 @@ Deno.serve(async (req) => {
       }));
     }
 
-    // 2) FCM (APK Android) — indipendente dal Web Push.
-    await sendFcm(recipientId);
+    // 2) FCM (APK Android) — solo quando si "suona".
+    if (buzz) await sendFcm(recipientId);
+
+    // Aggiorna il timestamp solo quando si è suonato (riapre la finestra).
+    if (buzz) {
+      await admin.from("notif_state").upsert({
+        user_id: recipientId,
+        last_notified_at: new Date().toISOString(),
+      });
+    }
 
     return new Response("ok", { status: 200 });
   } catch (e) {
