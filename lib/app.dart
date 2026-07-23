@@ -126,7 +126,16 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
           ValueListenableBuilder<bool>(
             valueListenable: AppServices.instance.panicMode,
             builder: (_, panic, _) => panic
-                ? Positioned.fill(child: _decoy())
+                // Navigator dedicato: la maschera è disegnata SOPRA il
+                // Navigator dell'app (in MaterialApp.builder), quindi senza uno
+                // suo non potrebbe aprire dialog/route sopra di sé (es. il date
+                // picker delle fasi lunari non si apriva).
+                ? Positioned.fill(
+                    child: Navigator(
+                      onGenerateRoute: (_) =>
+                          MaterialPageRoute(builder: (_) => _decoy()),
+                    ),
+                  )
                 : const SizedBox.shrink(),
           ),
         ],

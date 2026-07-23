@@ -36,12 +36,21 @@ self.addEventListener('push', function (event) {
 // Al tocco della notifica: porta in primo piano la finestra di Bruma (o la apre).
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
+  // URL dell'app = cartella del service worker (`.../bruma/`). Attenzione:
+  // '../' risolveva alla RADICE del dominio (fuori scope) → apriva il browser
+  // invece della PWA installata. './' resta dentro /bruma/.
+  const appUrl = new URL('./', self.location.href).href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+      // Riporta in primo piano una finestra dell'app già aperta (dentro scope).
       for (const client of list) {
-        if ('focus' in client) return client.focus();
+        if (client.url && client.url.indexOf(appUrl) === 0 && 'focus' in client) {
+          return client.focus();
+        }
       }
-      if (self.clients.openWindow) return self.clients.openWindow('../');
+      // Altrimenti apri l'app: con l'URL dentro scope Chrome apre la PWA
+      // installata (standalone), non una scheda del browser.
+      if (self.clients.openWindow) return self.clients.openWindow(appUrl);
     })
   );
 });

@@ -66,6 +66,9 @@ class _DecoyMoonScreenState extends State<DecoyMoonScreen>
       firstDate: first,
       lastDate: last,
       helpText: 'Scegli una data',
+      // La maschera vive in un Navigator dedicato (vedi app.dart): usa quello,
+      // non il root, altrimenti il dialog finirebbe dietro la maschera.
+      useRootNavigator: false,
     );
     if (picked != null && mounted) setState(() => _date = picked);
   }
