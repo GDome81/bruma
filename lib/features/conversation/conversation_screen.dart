@@ -54,6 +54,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   bool _showEmoji = false;
   Message? _replyingTo;
   DateTime? _lastReadAtOpen;
+  String? _highlightId; // messaggio evidenziato dopo il tap su una citazione
+  Timer? _highlightTimer;
 
   RealtimeChannel? _msgChannel;
   RealtimeChannel? _reactChannel;
@@ -95,6 +97,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void dispose() {
     _positions.itemPositions.removeListener(_onPositions);
     _reactDebounce?.cancel();
+    _highlightTimer?.cancel();
     _opensSub?.cancel();
     _requestsSub?.cancel();
     _mineReqSub?.cancel();
@@ -286,6 +289,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
         replyTo: replyTo,
       );
       AppServices.instance.cacheText(msg.id, t);
+      // Mostra subito il messaggio (non aspettare l'eco realtime, che con poco
+      // campo può tardare). _onInsert deduplica per id.
+      _onInsert(msg);
       if (mounted) setState(() => _replyingTo = null);
     } catch (e) {
       _text.text = t;
@@ -393,6 +399,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         replyTo: replyTo,
       );
       AppServices.instance.photoEcho[msg.id] = bytes;
+      _onInsert(msg); // mostra subito, senza aspettare l'eco realtime
       if (mounted) setState(() => _replyingTo = null);
     } catch (e) {
       _snack('Invio foto non riuscito: $e');
@@ -482,9 +489,22 @@ class _ConversationScreenState extends State<ConversationScreen> {
         duration: const Duration(milliseconds: 300),
         alignment: 0.3,
       );
+      _flashMessage(messageId);
     } else {
       _snack('Contenuto non più disponibile nella cronologia.');
     }
+  }
+
+  /// Evidenzia brevemente un messaggio (come WhatsApp quando tocchi una
+  /// citazione).
+  void _flashMessage(String messageId) {
+    _highlightTimer?.cancel();
+    setState(() => _highlightId = messageId);
+    _highlightTimer = Timer(const Duration(milliseconds: 1600), () {
+      if (mounted && _highlightId == messageId) {
+        setState(() => _highlightId = null);
+      }
+    });
   }
 
   Future<void> _openSettings() async {
@@ -591,6 +611,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       itemBuilder: (_, i) {
         final ai = _messages.length - 1 - i; // indice crescente reale
         final m = _messages[ai];
+        final cs = Theme.of(context).colorScheme;
         final bubble = MessageBubble(
           key: ValueKey(m.id),
           message: m,
@@ -601,12 +622,38 @@ class _ConversationScreenState extends State<ConversationScreen> {
           resolveReply: _resolveMessage,
           onQuoteTap: _goToMessage,
         );
-        // Il separatore "non letti" va SOPRA il primo non letto (nell'item, il
-        // Column è in orientamento normale anche con reverse).
+        // Swipe da sinistra → rispondi (come WhatsApp): non elimina, torna
+        // indietro e imposta la citazione.
+        Widget item = Dismissible(
+          key: ValueKey('sw_${m.id}'),
+          direction: DismissDirection.startToEnd,
+          dismissThresholds: const {DismissDirection.startToEnd: 0.28},
+          confirmDismiss: (_) async {
+            setState(() => _replyingTo = m);
+            return false;
+          },
+          background: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Icon(Icons.reply, color: cs.primary),
+            ),
+          ),
+          child: bubble,
+        );
+        // Evidenziazione dopo il tap su una citazione.
+        item = AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          color: m.id == _highlightId
+              ? cs.primary.withValues(alpha: 0.18)
+              : Colors.transparent,
+          child: item,
+        );
+        // Il separatore "non letti" va SOPRA il primo non letto.
         if (ai == firstUnread && firstUnread > 0) {
-          return Column(children: [_unreadDivider(context), bubble]);
+          return Column(children: [_unreadDivider(context), item]);
         }
-        return bubble;
+        return item;
       },
     );
   }
@@ -736,6 +783,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Widget _inputBar() {
+    final cs = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
       child: Column(
@@ -743,62 +791,98 @@ class _ConversationScreenState extends State<ConversationScreen> {
         children: [
           if (_replyingTo != null) _replyPreview(),
           Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                IconButton(
-                  onPressed: _toggleEmoji,
-                  icon: Icon(_showEmoji
-                      ? Icons.keyboard
-                      : Icons.emoji_emotions_outlined),
-                  tooltip: 'Emoji',
-                ),
-                IconButton(
-                  onPressed: _sending ? null : _sendPhoto,
-                  icon: const Icon(Icons.photo_camera),
-                  tooltip: 'Fotocamera',
-                ),
-                IconButton(
-                  onPressed: _sending ? null : _attachPhoto,
-                  icon: const Icon(Icons.attach_file),
-                  tooltip: 'Allega foto',
-                ),
+                // "Pillola" stile WhatsApp: emoji + testo (ampio) + allega +
+                // fotocamera, tutto dentro un unico campo arrotondato.
                 Expanded(
-                  child: CallbackShortcuts(
-                    bindings: {
-                      const SingleActivator(LogicalKeyboardKey.enter,
-                          control: true): () => _sendText(),
-                    },
-                    child: TextField(
-                      controller: _text,
-                      minLines: 1,
-                      maxLines: 5,
-                      textCapitalization: TextCapitalization.sentences,
-                      onTap: () {
-                        if (_showEmoji) setState(() => _showEmoji = false);
-                      },
-                      decoration: InputDecoration(
-                        hintText: _hasKeyboard
-                            ? 'Messaggio (Ctrl+Invio per inviare)'
-                            : 'Messaggio',
-                        border: const OutlineInputBorder(
-                          borderRadius: BorderRadius.all(Radius.circular(24)),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(26),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        IconButton(
+                          onPressed: _toggleEmoji,
+                          color: cs.onSurfaceVariant,
+                          icon: Icon(_showEmoji
+                              ? Icons.keyboard
+                              : Icons.emoji_emotions_outlined),
+                          tooltip: 'Emoji',
                         ),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                      ),
+                        Expanded(
+                          child: CallbackShortcuts(
+                            bindings: {
+                              const SingleActivator(LogicalKeyboardKey.enter,
+                                  control: true): () => _sendText(),
+                            },
+                            child: TextField(
+                              controller: _text,
+                              minLines: 1,
+                              maxLines: 6,
+                              textCapitalization:
+                                  TextCapitalization.sentences,
+                              onTap: () {
+                                if (_showEmoji) {
+                                  setState(() => _showEmoji = false);
+                                }
+                              },
+                              decoration: InputDecoration(
+                                hintText: _hasKeyboard
+                                    ? 'Messaggio (Ctrl+Invio per inviare)'
+                                    : 'Messaggio',
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding:
+                                    const EdgeInsets.symmetric(vertical: 11),
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: _sending ? null : _attachPhoto,
+                          color: cs.onSurfaceVariant,
+                          icon: const Icon(Icons.attach_file),
+                          tooltip: 'Allega foto',
+                        ),
+                        IconButton(
+                          onPressed: _sending ? null : _sendPhoto,
+                          color: cs.onSurfaceVariant,
+                          icon: const Icon(Icons.photo_camera_outlined),
+                          tooltip: 'Fotocamera',
+                        ),
+                        const SizedBox(width: 2),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 4),
-                IconButton.filled(
-                  onPressed: _sending ? null : _sendText,
-                  icon: _sending
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.send),
+                const SizedBox(width: 6),
+                // Tasto invio rotondo (come WhatsApp).
+                SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Material(
+                    color: cs.primary,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _sending ? null : _sendText,
+                      child: Center(
+                        child: _sending
+                            ? SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: cs.onPrimary),
+                              )
+                            : Icon(Icons.send, color: cs.onPrimary, size: 22),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

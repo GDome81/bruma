@@ -456,10 +456,12 @@ class _ReadReceiptState extends State<_ReadReceipt> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     // Distinzione per CONTEGGIO di spunte (accessibile ai daltonici):
-    // 2 = consegnato, 3 = letto (+ blu come bonus visivo).
-    final int count = _read ? 3 : 2;
+    // 1 = inviato (non ancora letto), 3 = letto (+ blu come bonus visivo).
+    // Non mostriamo "consegnato": senza una conferma di ricezione del
+    // dispositivo non è distinguibile dall'inviato.
+    final int count = _read ? 3 : 1;
     final Color color = _read ? _readBlue : cs.onSurfaceVariant;
-    final String tip = _read ? 'Letto' : 'Consegnato';
+    final String tip = _read ? 'Letto' : 'Inviato';
     return Tooltip(
       message: tip,
       child: Row(
