@@ -448,11 +448,33 @@ class AppServices {
   }
 
   Future<void> signOut() async {
+    // Rimuovi il token FCM di QUESTO dispositivo PRIMA del signOut: la RLS
+    // richiede la sessione viva e dopo il signOut `uid` non è più disponibile.
+    // Senza, il dispositivo continuerebbe a ricevere push per l'account uscito
+    // — leak grave col modello decoy/plausible-deniability.
+    await _removeFcmTokenForThisDevice();
+    await _fcmRefreshSub?.cancel();
+    _fcmRefreshSub = null;
     await auth.signOut();
     _setIdentity(null);
     myProfile = null;
     textEcho.clear();
     photoEcho.clear();
     _decryptedText.clear();
+  }
+
+  Future<void> _removeFcmTokenForThisDevice() async {
+    if (kIsWeb) return;
+    try {
+      final token = await currentFcmToken();
+      if (token == null) return;
+      await client
+          .from('fcm_tokens')
+          .delete()
+          .eq('user_id', uid)
+          .eq('token', token);
+    } catch (_) {
+      // best-effort
+    }
   }
 }

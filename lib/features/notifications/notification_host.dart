@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -49,6 +50,11 @@ class _NotificationHostState extends State<NotificationHost>
     if (_lifecycle == AppLifecycleState.resumed) return;
     // Chat silenziata → niente notifica.
     if (LocalPrefs.isChatMuted(m.conversationId)) return;
+    // Su APK Android le notifiche in background le mostra FCM (system tray):
+    // qui NON mostriamo nulla, altrimenti nella finestra "background ma
+    // processo/socket ancora vivo" si avrebbero DUE 🌙. Sul web (nessun FCM)
+    // resta il realtime a mostrarle.
+    if (!kIsWeb) return;
     NotificationService.showGenericMessage(
       silent: !LocalPrefs.notifSound,
       vibrate: LocalPrefs.notifVibrate,

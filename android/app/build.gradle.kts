@@ -1,9 +1,14 @@
 plugins {
     id("com.android.application")
-    // FCM: applica Google Services (richiede android/app/google-services.json).
-    id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// FCM: applica Google Services SOLO se google-services.json è presente, così
+// la build non fallisce quando il file manca (in quel caso semplicemente niente
+// FCM — utile per chi clona il repo senza il file, che è gitignored).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 android {
