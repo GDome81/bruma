@@ -107,6 +107,7 @@ class Message {
     this.editedAt,
     this.deletedAt,
     this.replyTo,
+    this.pending = false,
   });
 
   final String id;
@@ -119,6 +120,12 @@ class Message {
   final DateTime? editedAt;
   final DateTime? deletedAt;
   final String? replyTo; // id del messaggio citato
+
+  /// SOLO lato mittente e SOLO in RAM: true finché il server non ha confermato
+  /// l'inserimento (bolla ottimistica). Mostra 1 spunta ("in invio"); diventa
+  /// false — quindi 2 spunte ("inviato") — quando l'insert va a buon fine. Non
+  /// esiste sul server: [fromMap] lo lascia sempre false.
+  final bool pending;
 
   bool get isEdited => editedAt != null;
   bool get isDeleted => deletedAt != null;

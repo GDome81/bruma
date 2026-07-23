@@ -325,12 +325,34 @@ class _ConversationScreenState extends State<ConversationScreen>
         TargetPlatform.linux,
       }.contains(defaultTargetPlatform);
 
+  String _newTempId() => 'temp_${DateTime.now().microsecondsSinceEpoch}';
+
   Future<void> _sendText() async {
     final t = _text.text.trim();
     if (t.isEmpty || _sending) return;
     final replyTo = _replyingTo?.id;
-    setState(() => _sending = true);
+    // 1) Bolla OTTIMISTICA con 1 spunta ("in invio"): compare subito, prima che
+    //    il server confermi. Diventerà 2 spunte quando l'insert va a buon fine.
+    final tempId = _newTempId();
+    final temp = Message(
+      id: tempId,
+      conversationId: widget.conversationId,
+      senderId: AppServices.instance.uid,
+      type: MessageType.text,
+      ciphertext: null,
+      storagePath: null,
+      createdAt: DateTime.now().toUtc(),
+      replyTo: replyTo,
+      pending: true,
+    );
+    AppServices.instance.cacheText(tempId, t);
     _text.clear();
+    setState(() {
+      _messages.add(temp);
+      _replyingTo = null;
+      _sending = true;
+    });
+    _scrollToBottomSoon();
     try {
       final conv = await AppServices.instance.conversations
           .getConversation(widget.conversationId);
@@ -342,16 +364,42 @@ class _ConversationScreenState extends State<ConversationScreen>
         replyTo: replyTo,
       );
       AppServices.instance.cacheText(msg.id, t);
-      // Mostra subito il messaggio (non aspettare l'eco realtime, che con poco
-      // campo può tardare). _onInsert deduplica per id.
-      _onInsert(msg);
-      if (mounted) setState(() => _replyingTo = null);
+      // 2) Confermato dal server → sostituisci la bolla temp con quella reale.
+      _replaceTemp(tempId, msg);
     } catch (e) {
+      // Fallito (es. niente campo): togli la bolla e ripristina il testo.
+      _removeTemp(tempId);
       _text.text = t;
       _snack('Invio non riuscito: $e');
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  /// Sostituisce la bolla ottimistica [tempId] con il messaggio reale
+  /// confermato dal server, evitando doppioni se nel frattempo è già arrivato
+  /// via realtime.
+  void _replaceTemp(String tempId, Message real) {
+    if (!mounted) return;
+    setState(() {
+      final i = _messages.indexWhere((m) => m.id == tempId);
+      final alreadyReal = _messages.any((m) => m.id == real.id);
+      if (i >= 0) {
+        if (alreadyReal) {
+          _messages.removeAt(i); // l'eco realtime l'ha già inserito
+        } else {
+          _messages[i] = real;
+        }
+      } else if (!alreadyReal) {
+        _messages.add(real);
+      }
+    });
+    _markRead();
+  }
+
+  void _removeTemp(String tempId) {
+    if (!mounted) return;
+    setState(() => _messages.removeWhere((m) => m.id == tempId));
   }
 
   Future<void> _sendPhoto() async {
@@ -440,7 +488,27 @@ class _ConversationScreenState extends State<ConversationScreen>
   Future<void> _sendPhotoBytes(Uint8List bytes) async {
     if (_sending) return;
     final replyTo = _replyingTo?.id;
-    setState(() => _sending = true);
+    // Bolla OTTIMISTICA (1 spunta) subito, con l'anteprima locale: l'upload di
+    // una foto può essere lento, così l'utente la vede intanto che parte.
+    final tempId = _newTempId();
+    final temp = Message(
+      id: tempId,
+      conversationId: widget.conversationId,
+      senderId: AppServices.instance.uid,
+      type: MessageType.photo,
+      ciphertext: null,
+      storagePath: null,
+      createdAt: DateTime.now().toUtc(),
+      replyTo: replyTo,
+      pending: true,
+    );
+    AppServices.instance.photoEcho[tempId] = bytes;
+    setState(() {
+      _messages.add(temp);
+      _replyingTo = null;
+      _sending = true;
+    });
+    _scrollToBottomSoon();
     try {
       final conv = await AppServices.instance.conversations
           .getConversation(widget.conversationId);
@@ -452,9 +520,10 @@ class _ConversationScreenState extends State<ConversationScreen>
         replyTo: replyTo,
       );
       AppServices.instance.photoEcho[msg.id] = bytes;
-      _onInsert(msg); // mostra subito, senza aspettare l'eco realtime
-      if (mounted) setState(() => _replyingTo = null);
+      _replaceTemp(tempId, msg); // 1 spunta → 2 spunte
     } catch (e) {
+      _removeTemp(tempId);
+      AppServices.instance.photoEcho.remove(tempId);
       _snack('Invio foto non riuscito: $e');
     } finally {
       if (mounted) setState(() => _sending = false);

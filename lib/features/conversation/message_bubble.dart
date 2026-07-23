@@ -443,6 +443,8 @@ class _ReadReceiptState extends State<_ReadReceipt> {
   }
 
   Future<void> _fetch() async {
+    // Una bolla ancora "in invio" non ha un id sul server: niente da chiedere.
+    if (widget.message.pending) return;
     try {
       // "Letto" = il destinatario ha un evento 'granted' (vale anche per i
       // testi, che non incrementano open_count perché senza protezione).
@@ -455,13 +457,14 @@ class _ReadReceiptState extends State<_ReadReceipt> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Distinzione per CONTEGGIO di spunte (accessibile ai daltonici):
-    // 1 = inviato (non ancora letto), 3 = letto (+ blu come bonus visivo).
-    // Non mostriamo "consegnato": senza una conferma di ricezione del
-    // dispositivo non è distinguibile dall'inviato.
-    final int count = _read ? 3 : 1;
+    // Distinzione per CONTEGGIO di spunte (accessibile anche ai daltonici):
+    //   1 spunta grigia  = in invio (il server non ha ancora confermato)
+    //   2 spunte grigie  = inviato (il server ha salvato il messaggio)
+    //   3 spunte blu     = letto (il destinatario l'ha aperto)
+    final bool pending = widget.message.pending;
+    final int count = pending ? 1 : (_read ? 3 : 2);
     final Color color = _read ? _readBlue : cs.onSurfaceVariant;
-    final String tip = _read ? 'Letto' : 'Inviato';
+    final String tip = pending ? 'In invio' : (_read ? 'Letto' : 'Inviato');
     return Tooltip(
       message: tip,
       child: Row(
@@ -632,7 +635,11 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
   @override
   void initState() {
     super.initState();
-    _accessFuture = AppServices.instance.access.getMyAccess(widget.message.id);
+    // Bolla ottimistica ("in invio"): non c'è ancora nulla sul server da
+    // interrogare, mostriamo l'anteprima locale.
+    _accessFuture = widget.message.pending
+        ? Future<MessageAccess?>.value(null)
+        : AppServices.instance.access.getMyAccess(widget.message.id);
     // Aggiorna lo stato quando una richiesta viene gestita (rinnovo/reinvio).
     AppServices.instance.accessTick.addListener(_reloadAccess);
   }
@@ -766,6 +773,7 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.message.pending) return _pendingPhotoBubble(context);
     if (_bytes != null) {
       return GestureDetector(
         onLongPress: () => showMessageActions(context,
@@ -840,6 +848,51 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
         }
         return _closedCard(context, snap.data);
       },
+    );
+  }
+
+  /// Anteprima locale mentre la foto è "in invio" (bolla ottimistica): mostra
+  /// l'immagine con un velo + spinner e il footer con 1 spunta.
+  Widget _pendingPhotoBubble(BuildContext context) {
+    final echo = AppServices.instance.photoEcho[widget.message.id];
+    return _bubbleShell(
+      context,
+      mine: widget.isMine,
+      child: Column(
+        crossAxisAlignment: widget.isMine
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (echo != null)
+                  Image.memory(echo,
+                      height: 220, width: 260, cacheWidth: 520, fit: BoxFit.cover)
+                else
+                  Container(height: 220, width: 260, color: Colors.black26),
+                Container(
+                  height: 220,
+                  width: 260,
+                  color: Colors.black.withValues(alpha: 0.25),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 26,
+                      height: 26,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.5, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          _footer(context, widget.message, mine: widget.isMine),
+        ],
+      ),
     );
   }
 
