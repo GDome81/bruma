@@ -114,6 +114,18 @@ class _CameraScreenState extends State<CameraScreen>
     if (mounted) setState(() => _busy = false);
   }
 
+  /// Fattore di zoom per coprire lo schermo mantenendo le proporzioni del
+  /// preview (formula standard del plugin camera): se il prodotto degli
+  /// aspect-ratio è < 1 si inverte, così il preview riempie sempre il viewport.
+  double _coverScale(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return 1;
+    var scale = size.aspectRatio * controller.value.aspectRatio;
+    if (scale < 1) scale = 1 / scale;
+    return scale;
+  }
+
   Widget _previewScaffold() {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
@@ -223,16 +235,16 @@ class _CameraScreenState extends State<CameraScreen>
                 }
                 return Stack(
                   children: [
-                    // Anteprima a tutto schermo (cover) senza distorsione:
-                    // riempie lo schermo e ritaglia l'eccesso.
+                    // Anteprima a tutto schermo (cover) SENZA distorsione.
+                    // CameraPreview mantiene già le sue proporzioni; lo
+                    // ingrandiamo con Transform.scale finché copre lo schermo,
+                    // ritagliando l'eccesso (ClipRect). Niente stretch.
                     Positioned.fill(
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        clipBehavior: Clip.hardEdge,
-                        child: SizedBox(
-                          width: 100,
-                          height: 100 / _controller!.value.aspectRatio,
-                          child: CameraPreview(_controller!),
+                      child: ClipRect(
+                        child: Transform.scale(
+                          scale: _coverScale(context),
+                          alignment: Alignment.center,
+                          child: Center(child: CameraPreview(_controller!)),
                         ),
                       ),
                     ),
