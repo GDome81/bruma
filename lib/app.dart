@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -56,11 +57,17 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused) {
-      // Copri SUBITO con la calcolatrice — anche solo su `inactive` — così
-      // l'anteprima nella gallery delle app recenti mostra la calcolatrice e
-      // non le chat (è lì che Android scatta l'istantanea).
-      if (state == AppLifecycleState.hidden ||
-          state == AppLifecycleState.paused) {
+      final isRealBackground = state == AppLifecycleState.hidden ||
+          state == AppLifecycleState.paused;
+      // Su WEB `inactive` scatta al semplice cambio di focus (apertura dei
+      // DevTools, click su un'altra finestra) mentre la scheda è ancora
+      // visibile: NON coprire, altrimenti la maschera lampeggia a ogni focus e
+      // il dispatch del focus va in conflitto con l'overlay appena inserito
+      // (assertion "hasSize"/NEEDS-LAYOUT durante didChangeViewFocus). Copri
+      // su `inactive` solo su APK nativo, dove serve per l'anteprima nella
+      // gallery delle app recenti (lì Android scatta l'istantanea).
+      if (kIsWeb && !isRealBackground) return;
+      if (isRealBackground) {
         _wentBackground = true;
       }
       if (!s.panicMode.value) {
