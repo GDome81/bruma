@@ -103,29 +103,37 @@ async function getFcmAccessToken(sa: ServiceAccount): Promise<string> {
 
 async function sendFcm(recipientId: string): Promise<void> {
   const saRaw = Deno.env.get("FCM_SERVICE_ACCOUNT");
-  if (!saRaw) return; // FCM non configurato: nessun invio nativo
+  if (!saRaw) {
+    console.log("FCM: secret FCM_SERVICE_ACCOUNT NON impostato → skip");
+    return;
+  }
   let sa: ServiceAccount;
   try {
     sa = JSON.parse(saRaw);
   } catch {
-    console.error("FCM_SERVICE_ACCOUNT non è JSON valido");
+    console.error("FCM: FCM_SERVICE_ACCOUNT non è JSON valido");
     return;
   }
-  if (!sa.project_id || !sa.client_email || !sa.private_key) return;
+  if (!sa.project_id || !sa.client_email || !sa.private_key) {
+    console.error("FCM: service account incompleto (project_id/client_email/private_key)");
+    return;
+  }
 
   const { data: tokens } = await admin
     .from("fcm_tokens")
     .select("id,token")
     .eq("user_id", recipientId);
+  console.log(`FCM: ${tokens?.length ?? 0} token per destinatario ${recipientId}`);
   if (!tokens || tokens.length === 0) return;
 
   let access: string;
   try {
     access = await getFcmAccessToken(sa);
   } catch (e) {
-    console.error(e);
+    console.error(`FCM: OAuth error: ${e}`);
     return;
   }
+  console.log("FCM: access token OK, invio in corso");
 
   const endpoint =
     `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages`;
@@ -148,18 +156,18 @@ async function sendFcm(recipientId: string): Promise<void> {
         },
         body,
       });
+      console.log(`FCM: send status ${res.status}`);
       if (!res.ok) {
         const errText = await res.text();
+        console.error(`FCM: send ${res.status}: ${errText}`);
         // Solo token morto → rimuovilo (NON su INVALID_ARGUMENT, che può
         // indicare un payload errato e cancellerebbe token validi).
         if (res.status === 404 || errText.includes("UNREGISTERED")) {
           await admin.from("fcm_tokens").delete().eq("id", t.id);
-        } else {
-          console.error(`FCM send ${res.status}: ${errText}`);
         }
       }
     } catch (e) {
-      console.error(`FCM fetch error: ${e}`);
+      console.error(`FCM: fetch error: ${e}`);
     }
   }));
 }
