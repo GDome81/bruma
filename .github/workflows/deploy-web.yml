@@ -33,6 +33,10 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           --dart-define=BUILD_TAG=${{ github.sha }}
+      # Espone la versione "live" così l'app in esecuzione può accorgersi da
+      # sola di un nuovo deploy (banner "Aggiorna") senza dover killare la PWA.
+      - name: Write version.json
+        run: echo '{"build":"${{ github.sha }}"}' > build/web/version.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web

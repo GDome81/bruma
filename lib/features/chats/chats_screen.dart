@@ -22,19 +22,29 @@ class ChatsScreen extends StatefulWidget {
   State<ChatsScreen> createState() => _ChatsScreenState();
 }
 
-class _ChatsScreenState extends State<ChatsScreen> {
+class _ChatsScreenState extends State<ChatsScreen>
+    with WidgetsBindingObserver {
   late Future<List<ConversationView>> _future;
   StreamSubscription? _sub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _future = AppServices.instance.conversations.listConversationViews();
     // Aggiorna la lista quando arrivano/partono messaggi.
     _sub = AppServices.instance.conversations
         .watchAllMyMessages()
         .listen((_) => _reload());
     _maybeShowTutorial();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Al rientro in primo piano il socket realtime potrebbe essersi chiuso in
+    // background: ricarico la lista per non restare con conteggi non letti o
+    // chat mancanti finché non arriva il prossimo evento.
+    if (state == AppLifecycleState.resumed) _reload();
   }
 
   /// Al primo accesso (una sola volta) mostra il tutorial, appena la home è
@@ -52,6 +62,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
     super.dispose();
   }

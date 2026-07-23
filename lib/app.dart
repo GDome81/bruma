@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/app_services.dart';
 import 'core/local_prefs.dart';
+import 'core/version_check.dart';
 import 'features/auth/auth_screen.dart';
 import 'features/auth/decoy_common.dart';
 import 'features/auth/decoy_gallery_screen.dart';
@@ -39,6 +40,9 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Polling della versione live (solo web): rende immediato l'aggiornamento
+    // della PWA senza dover "killare" l'app.
+    VersionCheck.start();
   }
 
   @override
@@ -49,6 +53,9 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Al rientro in primo piano, ricontrolla se c'è una nuova versione (anche
+    // senza PIN attivo, quindi prima dell'early-return sotto).
+    if (state == AppLifecycleState.resumed) VersionCheck.checkNow();
     final s = AppServices.instance;
     // Senza PIN l'app NON si nasconde (scelta dell'utente): la calcolatrice si
     // mostra solo col pulsante panic.
@@ -114,6 +121,7 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
       builder: (context, child) => Stack(
         children: [
           ?child,
+          const _UpdateBanner(),
           const PanicButton(),
           ValueListenableBuilder<bool>(
             valueListenable: AppServices.instance.panicMode,
@@ -213,6 +221,55 @@ class _IdentityGateState extends State<IdentityGate> {
           return RecoveryScreen(onCompleted: _reload);
         }
         return const NotificationHost(child: ChatsScreen());
+      },
+    );
+  }
+}
+
+/// Banner globale mostrato quando è disponibile una nuova versione della PWA.
+/// Sta sotto la maschera panic (che lo copre) e offre un tocco per aggiornare.
+class _UpdateBanner extends StatelessWidget {
+  const _UpdateBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: VersionCheck.updateAvailable,
+      builder: (context, show, _) {
+        if (!show) return const SizedBox.shrink();
+        final cs = Theme.of(context).colorScheme;
+        return Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            bottom: false,
+            child: Material(
+              color: cs.primaryContainer,
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.system_update_alt,
+                        size: 20, color: cs.onPrimaryContainer),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'È disponibile una nuova versione di Bruma.',
+                        style: TextStyle(color: cs.onPrimaryContainer),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => VersionCheck.reload(),
+                      child: const Text('Aggiorna'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
       },
     );
   }

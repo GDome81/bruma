@@ -35,7 +35,8 @@ class ConversationScreen extends StatefulWidget {
   State<ConversationScreen> createState() => _ConversationScreenState();
 }
 
-class _ConversationScreenState extends State<ConversationScreen> {
+class _ConversationScreenState extends State<ConversationScreen>
+    with WidgetsBindingObserver {
   final _text = TextEditingController();
   final ItemScrollController _itemScroll = ItemScrollController();
   final ItemPositionsListener _positions = ItemPositionsListener.create();
@@ -67,6 +68,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _lastReadAtOpen = LocalPrefs.lastRead(widget.conversationId);
     _positions.itemPositions.addListener(_onPositions);
     _loadConversation();
@@ -94,7 +96,43 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Tornando in primo piano (soprattutto su mobile), il socket realtime può
+    // essersi chiuso mentre l'app era in background: senza far nulla si
+    // perderebbero i messaggi arrivati nel frattempo, costringendo a uscire e
+    // rientrare nella chat. Qui riabbono il canale e recupero gli eventuali
+    // messaggi persi.
+    if (state == AppLifecycleState.resumed) _resync();
+  }
+
+  void _resync() {
+    final c = AppServices.instance.client;
+    if (_msgChannel != null) c.removeChannel(_msgChannel!);
+    _msgChannel = AppServices.instance.messages.subscribeConversation(
+      widget.conversationId,
+      onInsert: _onInsert,
+      onUpdate: _onUpdate,
+    );
+    _catchUpLatest();
+  }
+
+  /// Ricarica l'ultima pagina e inserisce solo i messaggi non ancora presenti
+  /// (dedup per id in [_onInsert]), così i nuovi compaiono subito al rientro.
+  Future<void> _catchUpLatest() async {
+    try {
+      final page = await AppServices.instance.messages
+          .fetchPage(conversationId: widget.conversationId, limit: _pageSize);
+      for (final m in page.reversed) {
+        _onInsert(m); // ordine crescente; ignora i duplicati
+      }
+    } catch (_) {
+      // offline o errore transitorio: il realtime recupererà da solo.
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _positions.itemPositions.removeListener(_onPositions);
     _reactDebounce?.cancel();
     _highlightTimer?.cancel();
