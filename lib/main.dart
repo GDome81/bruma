@@ -25,10 +25,14 @@ Future<void> main() async {
   await AppServices.instance.refreshIdentity();
   await LocalPrefs.init();
   await NotificationService.init();
-  // Se è impostato un PIN, Bruma si apre già "bloccata" come calcolatrice: si
-  // sblocca digitando il PIN e "=". Senza PIN l'app si apre normalmente e la
-  // calcolatrice appare solo col tasto panic (che poi si sblocca col long-press).
-  AppServices.instance.panicMode.value = AppServices.instance.lockEnabled;
+  // Bruma si apre SEMPRE travestita (maschera scelta in Impostazioni, di
+  // default la calcolatrice) — anche al primo accesso e senza PIN. Si entra:
+  //  • col PIN + "=" se è impostato un PIN, oppure
+  //  • con un long press sulla maschera (porta a login/registrazione o, se sei
+  //    già loggato, direttamente all'app).
+  // NB: il ri-mascheramento automatico al ritorno dal background richiede
+  // comunque un PIN (senza, non ci sarebbe modo di ri-bloccare): vedi app.dart.
+  AppServices.instance.panicMode.value = true;
   // Con il PIN attivo applica subito FLAG_SECURE (anteprima nera nei recenti
   // su Android).
   AppServices.instance.applyLockFlagSecure();

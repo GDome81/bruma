@@ -63,7 +63,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
           'revocarle quando vuoi.\n'
           '• Scorri un messaggio verso destra per rispondere; tocca una '
           'citazione per saltare al messaggio originale.\n'
-          '• Una spunta = inviato, tre spunte blu = letto.',
+          '• Spunte: 1 grigia = in invio, 2 grigie = inviato, 3 blu = letto.',
     ),
     _Slide(
       icon: Icons.vpn_key_outlined,
