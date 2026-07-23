@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'core/app_services.dart';
 import 'core/config.dart';
+import 'core/fcm.dart';
 import 'core/local_prefs.dart';
 import 'core/notifications.dart';
 import 'shared/theme.dart';
@@ -25,6 +26,9 @@ Future<void> main() async {
   await AppServices.instance.refreshIdentity();
   await LocalPrefs.init();
   await NotificationService.init();
+  // Inizializza Firebase/FCM (solo Android; no-op su web). Non blocca l'avvio
+  // se google-services.json non è ancora presente.
+  await initFcm();
   // Bruma si apre SEMPRE travestita (maschera scelta in Impostazioni, di
   // default la calcolatrice) — anche al primo accesso e senza PIN. Si entra:
   //  • col PIN + "=" se è impostato un PIN, oppure

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -9,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config.dart';
 import 'crypto/crypto_service.dart';
+import 'fcm.dart';
 import 'local_prefs.dart';
 import 'models/models.dart';
 import 'notifications.dart';
@@ -333,12 +335,23 @@ class AppServices {
 
   // --- Notifiche / Web Push ------------------------------------------------
 
-  /// Chiede il permesso notifiche e, sul web, registra una Web Push salvando
-  /// la subscription su Supabase (per le notifiche ad app chiusa/sospesa).
+  /// Chiede il permesso notifiche e registra il canale push:
+  ///  • Web  → Web Push (subscription salvata in `push_subscriptions`).
+  ///  • APK  → token FCM salvato in `fcm_tokens`.
   /// Ritorna un messaggio pronto per la UI.
   Future<String> enablePush() async {
     await NotificationService.requestPermission();
-    if (!kIsWeb) return 'Notifiche attivate.';
+    if (!kIsWeb) {
+      // Android: registra il token FCM (per le notifiche ad app chiusa).
+      final token = await requestAndGetFcmToken();
+      if (token == null) {
+        return 'Notifiche non attivate: permesso negato o Firebase non '
+            'configurato in questa build.';
+      }
+      await _upsertFcmToken(token);
+      _fcmRefreshSub ??= fcmTokenRefresh().listen(_upsertFcmToken);
+      return 'Notifiche push attivate su questo dispositivo.';
+    }
     try {
       final sub = await subscribeWebPush(AppConfig.vapidPublicKey);
       await client.from('push_subscriptions').upsert({
@@ -351,6 +364,29 @@ class AppServices {
     } catch (e) {
       return 'Push non attivato — $e';
     }
+  }
+
+  StreamSubscription<String>? _fcmRefreshSub;
+
+  Future<void> _upsertFcmToken(String token) async {
+    try {
+      await client.from('fcm_tokens').upsert(
+        {'user_id': uid, 'token': token},
+        onConflict: 'token',
+      );
+    } catch (_) {
+      // rete/tabella assente: best-effort
+    }
+  }
+
+  /// Dopo il login (APK): registra silenziosamente il token FCM già esistente
+  /// e resta in ascolto dei refresh. Non chiede permessi (quelli si concedono
+  /// con "Attiva notifiche"). No-op su web.
+  Future<void> startFcmSync() async {
+    if (kIsWeb) return;
+    final token = await currentFcmToken();
+    if (token != null) await _upsertFcmToken(token);
+    _fcmRefreshSub ??= fcmTokenRefresh().listen(_upsertFcmToken);
   }
 
   // --- Preferenze notifiche (suono/vibrazione + muto per chat) -------------

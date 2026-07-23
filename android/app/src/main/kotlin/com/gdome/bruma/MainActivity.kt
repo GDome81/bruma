@@ -1,4 +1,4 @@
-package com.enginius.bruma
+package com.gdome.bruma
 
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity

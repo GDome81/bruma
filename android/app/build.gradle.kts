@@ -1,11 +1,13 @@
 plugins {
     id("com.android.application")
+    // FCM: applica Google Services (richiede android/app/google-services.json).
+    id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
-    namespace = "com.enginius.bruma"
+    namespace = "com.gdome.bruma"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -18,7 +20,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.enginius.bruma"
+        applicationId = "com.gdome.bruma"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // sodium_libs / mobile_scanner / camera / flutter_secure_storage: minSdk 23

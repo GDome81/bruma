@@ -37,6 +37,8 @@ class _ChatsScreenState extends State<ChatsScreen>
         .watchAllMyMessages()
         .listen((_) => _reload());
     _maybeShowTutorial();
+    // Registra/aggiorna il token FCM (solo APK; no-op su web).
+    AppServices.instance.startFcmSync();
   }
 
   @override

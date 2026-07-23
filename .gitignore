@@ -50,3 +50,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase / FCM: config client (per-progetto) e chiave service-account (SEGRETA)
+android/app/google-services.json
+**/service-account*.json
+firebase-service-account*.json
