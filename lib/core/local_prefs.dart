@@ -70,6 +70,11 @@ class LocalPrefs {
     await _p?.setStringList('muted_chats', set.toList());
   }
 
+  // --- Tutorial primo accesso (mostrato una volta) ------------------------
+  static bool get tutorialSeen => _p?.getBool('tutorial_seen') ?? false;
+  static Future<void> setTutorialSeen(bool v) async =>
+      _p?.setBool('tutorial_seen', v);
+
   // --- Ultimo messaggio letto per conversazione ----------------------------
   static DateTime? lastRead(String conversationId) {
     final s = _p?.getString('lastread_$conversationId');

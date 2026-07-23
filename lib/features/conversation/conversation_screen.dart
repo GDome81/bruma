@@ -214,15 +214,30 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   void _scrollToBottomSoon() {
+    // reverse: l'indice 0 è il più recente, in fondo. alignment 0 = bordo
+    // iniziale dell'item (in reverse: il BASSO) allineato al bordo iniziale
+    // del viewport → il fondo dell'ultimo messaggio tocca il fondo schermo.
+    void go({bool animate = true}) {
+      if (!_itemScroll.isAttached || _messages.isEmpty) return;
+      _itemScroll.scrollTo(
+        index: 0,
+        alignment: 0,
+        duration: animate
+            ? const Duration(milliseconds: 250)
+            : Duration.zero,
+        curve: Curves.easeOut,
+      );
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // reverse: l'indice 0 è il più recente, in fondo → posizione esatta.
-      if (_itemScroll.isAttached && _messages.isNotEmpty) {
-        _itemScroll.scrollTo(
-          index: 0,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
+      go();
+      // Una bolla multi-riga alta o l'apertura della tastiera cambiano
+      // l'altezza DOPO il primo frame: la prima animazione si fermerebbe corta
+      // lasciando visibile solo un pezzetto del messaggio. Ri-allineo quando il
+      // layout si è assestato.
+      Future.delayed(const Duration(milliseconds: 320), () {
+        if (mounted) go(animate: false);
+      });
     });
   }
 

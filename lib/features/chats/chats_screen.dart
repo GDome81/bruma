@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/app_services.dart';
+import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../shared/widgets.dart';
 import '../auth/export_identity_screen.dart';
@@ -11,6 +12,7 @@ import '../contacts/add_contact_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../conversation/conversation_screen.dart';
 import '../settings/app_settings_screen.dart';
+import '../tutorial/tutorial_screen.dart';
 
 /// Lista delle conversazioni, in stile WhatsApp semplificato.
 class ChatsScreen extends StatefulWidget {
@@ -32,6 +34,20 @@ class _ChatsScreenState extends State<ChatsScreen> {
     _sub = AppServices.instance.conversations
         .watchAllMyMessages()
         .listen((_) => _reload());
+    _maybeShowTutorial();
+  }
+
+  /// Al primo accesso (una sola volta) mostra il tutorial, appena la home è
+  /// pronta.
+  void _maybeShowTutorial() {
+    if (LocalPrefs.tutorialSeen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || LocalPrefs.tutorialSeen) return;
+      Navigator.of(context).push(MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const TutorialScreen(),
+      ));
+    });
   }
 
   @override

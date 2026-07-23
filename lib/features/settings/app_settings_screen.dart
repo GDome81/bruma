@@ -7,6 +7,7 @@ import '../../core/config.dart';
 import '../../core/local_prefs.dart';
 import '../../shared/widgets.dart';
 import '../auth/decoy_common.dart';
+import '../tutorial/tutorial_screen.dart';
 
 /// Impostazioni di sicurezza: PIN di blocco (+ biometria su APK) e versione.
 class AppSettingsScreen extends StatefulWidget {
@@ -204,6 +205,16 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                 'Puoi silenziare una singola chat dal menu ⋮ dentro la '
                 'conversazione.',
                 style: TextStyle(fontSize: 12)),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.school_outlined),
+            title: const Text('Rivedi tutorial'),
+            subtitle: const Text('Come funziona Bruma: maschera, backup, chat.'),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              fullscreenDialog: true,
+              builder: (_) => const TutorialScreen(),
+            )),
           ),
           const Divider(),
           const Padding(
