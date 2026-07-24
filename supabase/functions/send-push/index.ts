@@ -229,7 +229,14 @@ Deno.serve(async (req) => {
     //      dal server (non rivela quando l'utente apre l'app).
     const reminderMs = 10 * 60 * 1000;
 
-    let firstUnread = true;
+    // "caughtUp": il destinatario ha già LETTO l'ULTIMO messaggio precedente di
+    // questo mittente? Se sì è aggiornato → il nuovo è un avviso "fresco" e deve
+    // suonare. Se no, c'è già una notifica pendente → resta zitto. Guardiamo
+    // SOLO l'ultimo precedente: controllare tutta la cronologia era sbagliato
+    // (un vecchio messaggio mai aperto teneva il conto bloccato su "non letto").
+    // "Letto" = open_event 'granted' del destinatario (stesso segnale della
+    // spunta "letto").
+    let caughtUp = true;
     try {
       const { data: priorMsgs } = await admin
         .from("messages")
@@ -239,24 +246,21 @@ Deno.serve(async (req) => {
         .neq("id", msg.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
-        .limit(200);
-      const priorIds = (priorMsgs ?? []).map((m: { id: string }) => m.id);
-      if (priorIds.length > 0) {
+        .limit(1);
+      const prior = (priorMsgs ?? [])[0] as { id: string } | undefined;
+      if (prior) {
         const { data: opened } = await admin
           .from("open_events")
-          .select("message_id")
+          .select("id")
           .eq("recipient_id", recipientId)
           .eq("outcome", "granted")
-          .in("message_id", priorIds);
-        const openedSet = new Set(
-          (opened ?? []).map((o: { message_id: string }) => o.message_id),
-        );
-        const unread = priorIds.filter((id: string) => !openedSet.has(id));
-        firstUnread = unread.length === 0;
+          .eq("message_id", prior.id)
+          .limit(1);
+        caughtUp = (opened?.length ?? 0) > 0;
       }
     } catch (e) {
       console.error(`BUZZ check error: ${e}`);
-      firstUnread = true; // in dubbio, meglio notificare
+      caughtUp = true; // in dubbio, meglio notificare
     }
 
     const { data: nstate } = await admin
@@ -269,8 +273,8 @@ Deno.serve(async (req) => {
       : 0;
     const reminderDue = (Date.now() - lastMs) >= reminderMs;
 
-    const buzz = firstUnread || reminderDue;
-    console.log(`BUZZ=${buzz} (firstUnread=${firstUnread}, reminderDue=${reminderDue})`);
+    const buzz = caughtUp || reminderDue;
+    console.log(`BUZZ=${buzz} (caughtUp=${caughtUp}, reminderDue=${reminderDue})`);
 
     // 1) Web Push (PWA) — SOLO quando si "suona" (come FCM). Prima mandavo una
     // notifica silenziosa anche fuori-finestra per "aggiornare" la 🌙, ma il
