@@ -45,7 +45,10 @@ class CryptoService {
   /// occhio se due dispositivi hanno la STESSA identità (es. "A1B2 C3D4 E5F6
   /// 7890"). Non è segreta.
   String fingerprint(Uint8List publicKey) {
-    final h = _sodium.crypto.genericHash(message: publicKey, outLen: 8);
+    // BLAKE2b (genericHash) ha un minimo di 16 byte in output: usarne meno
+    // lancia un'eccezione. Prendo i primi 8 byte del digest per la stringa.
+    final full = _sodium.crypto.genericHash(message: publicKey, outLen: 16);
+    final h = full.take(8);
     final hex = h
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join()

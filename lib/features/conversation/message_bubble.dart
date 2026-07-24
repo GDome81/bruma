@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../shared/emoji_config.dart';
+import '../../shared/linkified_text.dart';
 
 import '../../core/app_services.dart';
 import '../../core/models/models.dart';
@@ -273,10 +274,11 @@ Future<void> showMessageActions(
                 children: [
                   for (final e in _reactionEmojis)
                     InkWell(
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(ctx);
-                        AppServices.instance.messages
+                        await AppServices.instance.messages
                             .setReaction(message.id, e);
+                        AppServices.instance.reactionsTick.value++;
                       },
                       child: Padding(
                         padding: const EdgeInsets.all(6),
@@ -288,8 +290,9 @@ Future<void> showMessageActions(
                       Navigator.pop(ctx);
                       final picked = await _pickEmoji(context);
                       if (picked != null) {
-                        AppServices.instance.messages
+                        await AppServices.instance.messages
                             .setReaction(message.id, picked);
+                        AppServices.instance.reactionsTick.value++;
                       }
                     },
                     child: const Padding(
@@ -585,12 +588,16 @@ class _TextBubbleState extends State<_TextBubble> {
             if (widget.message.replyTo != null)
               _quoteHeader(context, widget.message.replyTo!, widget.isMine,
                   widget.other, widget.resolveReply, widget.onQuoteTap),
-            Text(body,
-                style: placeholder
-                    ? TextStyle(
-                        fontStyle: FontStyle.italic,
-                        color: cs.onSurfaceVariant)
-                    : (bigEmoji ? const TextStyle(fontSize: 40) : null)),
+            if (placeholder || bigEmoji)
+              Text(body,
+                  style: placeholder
+                      ? TextStyle(
+                          fontStyle: FontStyle.italic,
+                          color: cs.onSurfaceVariant)
+                      : const TextStyle(fontSize: 40))
+            else
+              // Testo normale: link http/https cliccabili.
+              LinkifiedText(body),
             const SizedBox(height: 4),
             _footer(context, widget.message, mine: widget.isMine),
           ],

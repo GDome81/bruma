@@ -87,6 +87,10 @@ class AppServices {
   /// (rinnovo/reinvio): le bolle foto rileggono lo stato di accesso dal vivo.
   final ValueNotifier<int> accessTick = ValueNotifier<int>(0);
 
+  /// Bump dopo aver messo/tolto una reaction: la conversazione ricarica subito
+  /// le reactions senza aspettare l'eco realtime (che a volte tarda).
+  final ValueNotifier<int> reactionsTick = ValueNotifier<int>(0);
+
   /// Modalità "panic": quando attiva, l'app mostra un decoy (calcolatrice) al
   /// posto del login finché non si sblocca. Persistita in LocalPrefs.
   final ValueNotifier<bool> panicMode = ValueNotifier<bool>(false);

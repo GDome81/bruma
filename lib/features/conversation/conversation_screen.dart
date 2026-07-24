@@ -81,6 +81,9 @@ class _ConversationScreenState extends State<ConversationScreen>
     );
     _reactChannel =
         AppServices.instance.messages.subscribeReactions(_onReactionChange);
+    // Ricarica subito le reactions quando io ne aggiungo/tolgo una (non aspetto
+    // l'eco realtime, che a volte tarda).
+    AppServices.instance.reactionsTick.addListener(_reloadReactions);
     _opensSub = AppServices.instance.stats
         .watchMyOpenEvents()
         .listen((_) => AppServices.instance.openEventsTick.value++);
@@ -135,6 +138,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _positions.itemPositions.removeListener(_onPositions);
+    AppServices.instance.reactionsTick.removeListener(_reloadReactions);
     _reactDebounce?.cancel();
     _highlightTimer?.cancel();
     _opensSub?.cancel();
@@ -328,6 +332,19 @@ class _ConversationScreenState extends State<ConversationScreen>
 
   String _newTempId() => 'temp_${DateTime.now().microsecondsSinceEpoch}';
 
+  /// Destinatario con chiave pubblica AGGIORNATA, riletta al momento dell'invio:
+  /// evita di cifrare con una chiave in cache vecchia (es. se il destinatario
+  /// ha riallineato l'identità mentre la chat era aperta). Fallback a
+  /// widget.other se il fetch fallisce.
+  Future<Profile> _freshRecipient() async {
+    try {
+      final p =
+          await AppServices.instance.profiles.getProfile(widget.other.id);
+      if (p != null && p.publicKey.isNotEmpty) return p;
+    } catch (_) {}
+    return widget.other;
+  }
+
   Future<void> _sendText() async {
     final t = _text.text.trim();
     if (t.isEmpty || _sending) return;
@@ -357,9 +374,10 @@ class _ConversationScreenState extends State<ConversationScreen>
     try {
       final conv = await AppServices.instance.conversations
           .getConversation(widget.conversationId);
+      final recipient = await _freshRecipient();
       final msg = await AppServices.instance.messages.sendText(
         conversation: conv,
-        recipient: widget.other,
+        recipient: recipient,
         senderPublicKey: AppServices.instance.identity.publicKey,
         text: t,
         replyTo: replyTo,
@@ -513,9 +531,10 @@ class _ConversationScreenState extends State<ConversationScreen>
     try {
       final conv = await AppServices.instance.conversations
           .getConversation(widget.conversationId);
+      final recipient = await _freshRecipient();
       final msg = await AppServices.instance.messages.sendPhoto(
         conversation: conv,
-        recipient: widget.other,
+        recipient: recipient,
         senderPublicKey: AppServices.instance.identity.publicKey,
         imageBytes: bytes,
         replyTo: replyTo,
