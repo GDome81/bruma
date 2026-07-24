@@ -23,6 +23,12 @@ class LocalPrefs {
   static Future<void> setDecoyType(String v) async =>
       _p?.setString('decoy_type', v);
 
+  // --- Icona/nome launcher (Android): alias activity attivo -----------------
+  static String get appIconAlias =>
+      _p?.getString('app_icon_alias') ?? 'BrumaDefault';
+  static Future<void> setAppIconAlias(String v) async =>
+      _p?.setString('app_icon_alias', v);
+
   // --- Blocco app con PIN (+ biometria su APK) -----------------------------
   static bool get appLockEnabled => _p?.getBool('app_lock_enabled') ?? false;
   static Future<void> setAppLockEnabled(bool v) async =>

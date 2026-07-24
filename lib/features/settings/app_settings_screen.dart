@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/app_icon.dart';
 import '../../core/app_services.dart';
 import '../../core/config.dart';
 import '../../core/local_prefs.dart';
@@ -94,6 +95,70 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               child: const Text('OK')),
         ],
       ),
+    );
+  }
+
+  IconData _aliasIcon(String alias) {
+    switch (alias) {
+      case 'MaskCalc':
+        return Icons.calculate;
+      case 'MaskMeteo':
+        return Icons.wb_sunny_outlined;
+      case 'MaskNote':
+        return Icons.sticky_note_2_outlined;
+      case 'MaskPromemoria':
+        return Icons.alarm;
+      default:
+        return Icons.nightlight_round;
+    }
+  }
+
+  Future<void> _setAppIcon(AppIconPreset p) async {
+    try {
+      await AppIcon.setAlias(p.alias);
+      await LocalPrefs.setAppIconAlias(p.alias);
+      if (mounted) setState(() {});
+      _snack('Icona e nome cambiati in "${p.label}". Cerca la nuova icona nel '
+          'launcher: potrebbe sparire e riapparire dopo qualche secondo.');
+    } catch (e) {
+      _snack('Cambio icona non riuscito: $e');
+    }
+  }
+
+  /// Selettore icona+nome del launcher (solo Android). Su web è vuoto: nome e
+  /// icona di una PWA sono fissati all'installazione.
+  Widget _appIconSection(BuildContext context) {
+    if (kIsWeb) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final current = LocalPrefs.appIconAlias;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text('Icona e nome app',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+              'Come appare Bruma nel launcher (solo app Android). Cambiando, '
+              'l\'icona può sparire e riapparire dopo qualche secondo.',
+              style: TextStyle(fontSize: 13)),
+        ),
+        ...AppIcon.presets.map((p) {
+          final selected = current == p.alias;
+          return ListTile(
+            leading: Icon(_aliasIcon(p.alias)),
+            title: Text(p.label),
+            trailing: selected
+                ? Icon(Icons.check_circle, color: cs.primary)
+                : null,
+            onTap: () => _setAppIcon(p),
+          );
+        }),
+      ],
     );
   }
 
@@ -327,6 +392,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               },
             );
           }),
+          _appIconSection(context),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.notifications_active_outlined),
