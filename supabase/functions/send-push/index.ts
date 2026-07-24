@@ -272,17 +272,21 @@ Deno.serve(async (req) => {
     const buzz = firstUnread || reminderDue;
     console.log(`BUZZ=${buzz} (firstUnread=${firstUnread}, reminderDue=${reminderDue})`);
 
-    // 1) Web Push (PWA) — sempre inviato; silenzioso fuori-finestra.
-    const { data: subs } = await admin
-      .from("push_subscriptions")
-      .select("id,endpoint,p256dh,auth")
-      .eq("user_id", recipientId);
+    // 1) Web Push (PWA) — SOLO quando si "suona" (come FCM). Prima mandavo una
+    // notifica silenziosa anche fuori-finestra per "aggiornare" la 🌙, ma il
+    // browser mostra comunque il banner → sembrava arrivasse sempre.
+    const { data: subs } = buzz
+        ? await admin
+            .from("push_subscriptions")
+            .select("id,endpoint,p256dh,auth")
+            .eq("user_id", recipientId)
+        : { data: null };
     if (subs && subs.length > 0) {
       const body = JSON.stringify({
         title: "Bruma",
         body: "🌙",
-        silent: !buzz || !sound,
-        vibrate: buzz && vibrate,
+        silent: !sound,
+        vibrate,
       });
       await Promise.all(subs.map(async (s) => {
         try {
