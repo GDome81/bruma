@@ -183,6 +183,42 @@ class AppServices {
     _setIdentity(kp);
   }
 
+  // --- Allineamento identità (dispositivo ↔ account) ----------------------
+
+  /// Chiave pubblica di QUESTO dispositivo (base64), o null se assente.
+  String? get localPublicKeyB64 =>
+      _identity == null ? null : crypto.encodePublicKey(_identity!.publicKey);
+
+  /// Chiave pubblica registrata sull'ACCOUNT (profilo remoto).
+  String? get accountPublicKeyB64 => myProfile?.publicKey;
+
+  /// Vero se la chiave del dispositivo combacia con quella dell'account. Se una
+  /// delle due manca, non segnaliamo disallineamento (true).
+  bool get deviceKeyMatchesAccount {
+    final l = localPublicKeyB64;
+    final a = accountPublicKeyB64;
+    if (l == null || a == null || a.isEmpty) return true;
+    return l == a;
+  }
+
+  /// Impronta leggibile di una chiave pubblica base64 (confronto tra device).
+  String fingerprintOf(String? b64) {
+    if (b64 == null || b64.isEmpty) return '—';
+    try {
+      return crypto.fingerprint(crypto.decodePublicKey(b64));
+    } catch (_) {
+      return '—';
+    }
+  }
+
+  /// Rende la chiave di QUESTO dispositivo quella ufficiale dell'account: da qui
+  /// i nuovi messaggi verranno cifrati per questa chiave e il dispositivo torna
+  /// a decifrarli. Gli ALTRI dispositivi dovranno importare questa identità.
+  Future<void> makeThisDeviceCanonical() async {
+    await profiles.updatePublicKey(crypto.encodePublicKey(identity.publicKey));
+    myProfile = await profiles.getMyProfile();
+  }
+
   /// Esporta l'identità corrente come stringa cifrata con [password].
   String exportIdentity(String password) => crypto.exportIdentity(identity, password);
 

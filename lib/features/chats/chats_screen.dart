@@ -175,7 +175,11 @@ class _ChatsScreenState extends State<ChatsScreen>
         onPressed: _openAddContact,
         child: const Icon(Icons.person_add_alt_1),
       ),
-      body: RefreshIndicator(
+      body: Column(
+        children: [
+          _keyMismatchBanner(context),
+          Expanded(
+            child: RefreshIndicator(
         onRefresh: () async => _reload(),
         child: FutureBuilder<List<ConversationView>>(
           future: _future,
@@ -217,6 +221,42 @@ class _ChatsScreenState extends State<ChatsScreen>
               itemBuilder: (_, i) => _tile(views[i]),
             );
           },
+        ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Alert in cima alla lista quando la chiave del dispositivo non è più
+  /// allineata a quella dell'account: i messaggi nuovi potrebbero non aprirsi.
+  Widget _keyMismatchBanner(BuildContext context) {
+    if (AppServices.instance.deviceKeyMatchesAccount) {
+      return const SizedBox.shrink();
+    }
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.errorContainer,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const AppSettingsScreen())),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Icon(Icons.key_off, color: cs.onErrorContainer, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Questo dispositivo usa una chiave non più valida per '
+                  'l\'account: i messaggi nuovi potrebbero non aprirsi. Tocca '
+                  'per sistemare in Sicurezza.',
+                  style: TextStyle(color: cs.onErrorContainer, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

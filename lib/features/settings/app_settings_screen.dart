@@ -97,6 +97,94 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     );
   }
 
+  Future<void> _makeCanonical() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Usare questa chiave per l\'account?'),
+        content: const Text(
+            'Da adesso i nuovi messaggi verranno cifrati per la chiave di '
+            'QUESTO dispositivo, che tornerà quindi ad aprirli. Gli altri tuoi '
+            'dispositivi smetteranno di aprire i messaggi nuovi finché non vi '
+            'importi questa stessa identità. I messaggi già esistenti non '
+            'cambiano.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Conferma')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await AppServices.instance.makeThisDeviceCanonical();
+      if (mounted) setState(() {});
+      _snack('Fatto: questo dispositivo è ora la chiave dell\'account.');
+    } catch (e) {
+      _snack('Operazione non riuscita: $e');
+    }
+  }
+
+  Widget _identitySection(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final s = AppServices.instance;
+    final matches = s.deviceKeyMatchesAccount;
+    final fp = s.fingerprintOf(s.localPublicKeyB64);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child:
+              Text('Identità', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        ListTile(
+          leading: const Icon(Icons.fingerprint),
+          title: const Text('Impronta di questo dispositivo'),
+          subtitle: Text('$fp\n\nDeve essere IDENTICA su tutti i tuoi '
+              'dispositivi (APK e web) dello stesso account.'),
+          isThreeLine: true,
+        ),
+        if (!matches)
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.errorContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: cs.onErrorContainer),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Questo dispositivo usa una chiave NON più allineata '
+                    'all\'account: i messaggi nuovi potrebbero non aprirsi qui. '
+                    'Usa la chiave di questo dispositivo per l\'account (sotto), '
+                    'oppure importa qui l\'identità corretta.',
+                    style: TextStyle(color: cs.onErrorContainer),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ListTile(
+          leading: Icon(Icons.vpn_key, color: cs.primary),
+          title: const Text('Usa questa chiave per l\'account'),
+          subtitle: const Text(
+              'Rende questo dispositivo quello "ufficiale": i nuovi messaggi '
+              'verranno cifrati per la sua chiave. Gli altri dispositivi '
+              'dovranno importare questa identità.'),
+          onTap: _makeCanonical,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final enabled = LocalPrefs.appLockEnabled;
@@ -216,6 +304,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               builder: (_) => const TutorialScreen(),
             )),
           ),
+          const Divider(),
+          _identitySection(context),
           const Divider(),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 4),

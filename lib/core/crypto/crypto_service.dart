@@ -41,6 +41,22 @@ class CryptoService {
   String encodePublicKey(Uint8List publicKey) => base64Encode(publicKey);
   Uint8List decodePublicKey(String b64) => base64Decode(b64);
 
+  /// Impronta breve e leggibile di una chiave pubblica, per confrontare a
+  /// occhio se due dispositivi hanno la STESSA identità (es. "A1B2 C3D4 E5F6
+  /// 7890"). Non è segreta.
+  String fingerprint(Uint8List publicKey) {
+    final h = _sodium.crypto.genericHash(message: publicKey, outLen: 8);
+    final hex = h
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join()
+        .toUpperCase();
+    final groups = <String>[];
+    for (var i = 0; i < hex.length; i += 4) {
+      groups.add(hex.substring(i, i + 4));
+    }
+    return groups.join(' ');
+  }
+
   // --- Cifratura dei contenuti (K monouso) --------------------------------
 
   /// Cifra [plaintext] con una nuova chiave simmetrica monouso.
