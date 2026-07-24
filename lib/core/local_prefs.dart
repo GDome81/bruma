@@ -54,6 +54,33 @@ class LocalPrefs {
   static Future<void> setNotifVibrate(bool v) async =>
       _p?.setBool('notif_vibrate', v);
 
+  // Testo notifica personalizzato (mascheramento). null/empty = default 🌙.
+  static String? get notifTitle => _p?.getString('notif_title');
+  static String? get notifBody => _p?.getString('notif_body');
+  static Future<void> setNotifText(String? title, String? body) async {
+    if (title == null || title.isEmpty) {
+      await _p?.remove('notif_title');
+    } else {
+      await _p?.setString('notif_title', title);
+    }
+    if (body == null || body.isEmpty) {
+      await _p?.remove('notif_body');
+    } else {
+      await _p?.setString('notif_body', body);
+    }
+  }
+
+  /// Titolo/corpo effettivi da mostrare (con fallback al default anonimo).
+  static String get effectiveNotifTitle {
+    final t = notifTitle;
+    return (t == null || t.isEmpty) ? 'Bruma' : t;
+  }
+
+  static String get effectiveNotifBody {
+    final b = notifBody;
+    return (b == null || b.isEmpty) ? '🌙' : b;
+  }
+
   static List<String> get mutedChats =>
       _p?.getStringList('muted_chats') ?? const [];
 

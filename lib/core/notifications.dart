@@ -37,10 +37,12 @@ class NotificationService {
   }
 
   static Future<void> showGenericMessage(
-      {bool silent = false, bool vibrate = true}) async {
+      {bool silent = false,
+      bool vibrate = true,
+      String title = 'Bruma',
+      String body = '🌙'}) async {
     if (kIsWeb) {
-      // Titolo/corpo volutamente anonimi: solo la luna.
-      await showWebNotification('Bruma', '🌙',
+      await showWebNotification(title, body,
           silent: silent, vibrate: vibrate);
       return;
     }
@@ -49,14 +51,13 @@ class NotificationService {
       android: AndroidNotificationDetails(
         'bruma_messages',
         'Aggiornamenti',
-        channelDescription: 'Notifiche anonime di Bruma',
+        channelDescription: 'Notifiche di Bruma',
         importance: silent ? Importance.low : Importance.high,
         priority: silent ? Priority.low : Priority.high,
         playSound: !silent,
         enableVibration: vibrate && !silent,
       ),
     );
-    // Nessun nome né testo: solo la luna.
-    await _plugin.show(0, 'Bruma', '🌙', details);
+    await _plugin.show(0, title, body, details);
   }
 }

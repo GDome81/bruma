@@ -444,12 +444,20 @@ class AppServices {
     await _syncNotifPrefs();
   }
 
+  /// Testo notifica personalizzato (mascheramento). null/empty → default 🌙.
+  Future<void> setNotifText(String? title, String? body) async {
+    await LocalPrefs.setNotifText(title, body);
+    await _syncNotifPrefs();
+  }
+
   Future<void> _syncNotifPrefs() async {
     try {
       await client.from('notif_prefs').upsert({
         'user_id': uid,
         'sound': LocalPrefs.notifSound,
         'vibrate': LocalPrefs.notifVibrate,
+        'notif_title': LocalPrefs.notifTitle,
+        'notif_body': LocalPrefs.notifBody,
       }, onConflict: 'user_id');
     } catch (_) {
       // la tabella potrebbe non esistere ancora: le notifiche in-app funzionano

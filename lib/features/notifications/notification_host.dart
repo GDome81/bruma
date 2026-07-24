@@ -58,6 +58,8 @@ class _NotificationHostState extends State<NotificationHost>
     NotificationService.showGenericMessage(
       silent: !LocalPrefs.notifSound,
       vibrate: LocalPrefs.notifVibrate,
+      title: LocalPrefs.effectiveNotifTitle,
+      body: LocalPrefs.effectiveNotifBody,
     );
   }
 

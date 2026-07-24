@@ -101,7 +101,11 @@ async function getFcmAccessToken(sa: ServiceAccount): Promise<string> {
   return json.access_token;
 }
 
-async function sendFcm(recipientId: string): Promise<void> {
+async function sendFcm(
+  recipientId: string,
+  title: string,
+  bodyText: string,
+): Promise<void> {
   const saRaw = Deno.env.get("FCM_SERVICE_ACCOUNT");
   if (!saRaw) {
     console.log("FCM: secret FCM_SERVICE_ACCOUNT NON impostato → skip");
@@ -143,8 +147,8 @@ async function sendFcm(recipientId: string): Promise<void> {
     const body = JSON.stringify({
       message: {
         token: t.token,
-        // ANONIMO: nessun nome, nessun contenuto.
-        notification: { title: "Bruma", body: "🌙" },
+        // Testo scelto dal destinatario (default anonimo "Bruma"/🌙).
+        notification: { title, body: bodyText },
         android: {
           priority: "HIGH",
           // Collassa: una sola 🌙 nel cassetto (si aggiorna, non si impila).
@@ -208,14 +212,16 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (mute) return new Response("muted", { status: 200 });
 
-    // Preferenze suono/vibrazione (default: attivi).
+    // Preferenze: suono/vibrazione + testo notifica personalizzato (default 🌙).
     const { data: prefs } = await admin
       .from("notif_prefs")
-      .select("sound,vibrate")
+      .select("sound,vibrate,notif_title,notif_body")
       .eq("user_id", recipientId)
       .maybeSingle();
     const sound = prefs?.sound ?? true;
     const vibrate = prefs?.vibrate ?? true;
+    const notifTitle = prefs?.notif_title || "Bruma";
+    const notifBody = prefs?.notif_body || "🌙";
 
     // Decidiamo se questo avviso deve "suonare" (buzz) o solo aggiornare in
     // silenzio. Due condizioni, in OR:
@@ -287,8 +293,8 @@ Deno.serve(async (req) => {
         : { data: null };
     if (subs && subs.length > 0) {
       const body = JSON.stringify({
-        title: "Bruma",
-        body: "🌙",
+        title: notifTitle,
+        body: notifBody,
         silent: !sound,
         vibrate,
       });
@@ -308,7 +314,7 @@ Deno.serve(async (req) => {
     }
 
     // 2) FCM (APK Android) — solo quando si "suona".
-    if (buzz) await sendFcm(recipientId);
+    if (buzz) await sendFcm(recipientId, notifTitle, notifBody);
 
     // Registra l'ora dell'ultimo avviso sonoro (per il promemoria a N minuti).
     if (buzz) {

@@ -97,6 +97,79 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     );
   }
 
+  Future<void> _editNotifText() async {
+    final titleC = TextEditingController(text: LocalPrefs.notifTitle ?? '');
+    final bodyC = TextEditingController(text: LocalPrefs.notifBody ?? '');
+    // [titolo, testo] — il primo (vuoto) è il default anonimo 🌙.
+    const presets = <List<String>>[
+      ['', ''],
+      ['Promemoria', 'Hai un promemoria'],
+      ['Meteo', 'Aggiornamento disponibile'],
+      ['Note', 'Nota aggiornata'],
+      ['🔔', ''],
+    ];
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Testo notifica'),
+        content: StatefulBuilder(
+          builder: (ctx, setLocal) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                    'Scegli un preset o scrivi il tuo. Lascia vuoto per la '
+                    'notifica anonima 🌙.',
+                    style: TextStyle(fontSize: 12)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    for (final p in presets)
+                      ActionChip(
+                        label: Text(p[0].isEmpty ? '🌙 Default' : p[0]),
+                        onPressed: () => setLocal(() {
+                          titleC.text = p[0];
+                          bodyC.text = p[1];
+                        }),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: titleC,
+                  decoration: const InputDecoration(labelText: 'Titolo'),
+                ),
+                TextField(
+                  controller: bodyC,
+                  decoration: const InputDecoration(labelText: 'Testo'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Salva')),
+        ],
+      ),
+    );
+    if (saved == true) {
+      await AppServices.instance
+          .setNotifText(titleC.text.trim(), bodyC.text.trim());
+      if (mounted) setState(() {});
+      _snack('Testo notifica aggiornato.');
+    }
+    titleC.dispose();
+    bodyC.dispose();
+  }
+
   Future<void> _makeCanonical() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -293,6 +366,16 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                 'Puoi silenziare una singola chat dal menu ⋮ dentro la '
                 'conversazione.',
                 style: TextStyle(fontSize: 12)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_notifications_outlined),
+            title: const Text('Testo notifica'),
+            subtitle: Text(
+                'Come appare l\'avviso: "${LocalPrefs.effectiveNotifTitle}" · '
+                '${LocalPrefs.effectiveNotifBody}\n'
+                'Personalizzalo per mascherare (vuoto = 🌙 anonimo).'),
+            isThreeLine: true,
+            onTap: _editNotifText,
           ),
           const Divider(),
           ListTile(
