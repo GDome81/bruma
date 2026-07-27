@@ -126,7 +126,17 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
           ValueListenableBuilder<bool>(
             valueListenable: AppServices.instance.panicMode,
             builder: (_, panic, _) => panic
-                ? Positioned.fill(child: _decoy())
+                // Navigator dedicato: la maschera è disegnata SOPRA il Navigator
+                // dell'app, quindi da sola non avrebbe un Overlay ancestor →
+                // i Tooltip, il menu di selezione testo dei campi e i dialog
+                // fallirebbero ("No Overlay widget found"). Il Navigator ne
+                // fornisce uno e ospita eventuali route della maschera.
+                ? Positioned.fill(
+                    child: Navigator(
+                      onGenerateRoute: (_) =>
+                          MaterialPageRoute(builder: (_) => _decoy()),
+                    ),
+                  )
                 : const SizedBox.shrink(),
           ),
         ],
