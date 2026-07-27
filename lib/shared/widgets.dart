@@ -108,8 +108,8 @@ class LimitsNote extends StatelessWidget {
       'altro dispositivo.\n'
       '• Un client manomesso, dopo una singola apertura, potrebbe conservare la '
       'chiave: il limite di aperture vincola solo l\'app onesta.\n'
-      '• La revoca rende inservibile ciò che non è ancora stato aperto; non '
-      'recupera ciò che è già stato visto.';
+      '• Revocando blocchi le aperture future: ciò che il destinatario non ha '
+      'ancora aperto diventa inaccessibile.';
 
   @override
   Widget build(BuildContext context) {

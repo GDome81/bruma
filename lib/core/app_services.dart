@@ -223,14 +223,23 @@ class AppServices {
     myProfile = await profiles.getMyProfile();
   }
 
-  /// Esporta l'identità corrente come stringa cifrata con [password].
-  String exportIdentity(String password) => crypto.exportIdentity(identity, password);
+  /// Esporta l'identità corrente come stringa cifrata con [password] (con il
+  /// tag dell'account, per rifiutare l'import su un account diverso).
+  String exportIdentity(String password) =>
+      crypto.exportIdentity(identity, password, tag: uid);
 
   /// Importa un'identità (da backup + password): la salva sul dispositivo,
   /// allinea la chiave pubblica sul profilo e la rende quella corrente.
   /// Da qui in poi i contenuti cifrati per QUELLA identità sono apribili.
   Future<void> importIdentity(String data, String password) async {
-    final kp = crypto.importIdentity(data, password); // lancia se pwd/dati errati
+    // Lancia IdentityException (messaggio generico) su dati/password errati.
+    final imported = crypto.importIdentity(data, password);
+    // Rifiuta se l'identità è di un ALTRO account, con lo STESSO errore generico
+    // (non riveliamo che appartiene ad altri).
+    if (imported.originUid.isNotEmpty && imported.originUid != uid) {
+      throw const IdentityException();
+    }
+    final kp = imported.keyPair;
     await keyStore.save(uid, kp);
     await profiles.updatePublicKey(crypto.encodePublicKey(kp.publicKey));
     _setIdentity(kp);
@@ -260,6 +269,46 @@ class AppServices {
     } finally {
       key.dispose();
     }
+  }
+
+  // --- Richieste di riapertura (il mittente approva) -----------------------
+  // Centralizzate qui così sia la conversazione sia la schermata Notifiche
+  // possono gestirle allo stesso modo.
+
+  Future<void> renewRequest(ContentRequest req) async {
+    await requests.renew(req.messageId);
+    await requests.resolve(req.id, 'renewed');
+  }
+
+  Future<void> denyRequest(ContentRequest req) async {
+    await requests.resolve(req.id, 'denied');
+  }
+
+  /// Reinvia il contenuto al richiedente: riapre la PROPRIA copia e la rimanda.
+  Future<void> resendRequest(ContentRequest req) async {
+    final m = await messages.getMessage(req.messageId);
+    if (m == null) throw Exception('Messaggio non trovato');
+    final conv = await conversations.getConversation(m.conversationId);
+    final recipient = await profiles.getProfile(req.requesterId);
+    if (recipient == null) throw Exception('Destinatario non trovato');
+    final bytes = await openContentBytes(m);
+    final pub = identity.publicKey;
+    if (m.type == MessageType.text) {
+      final sent = await messages.sendText(
+          conversation: conv,
+          recipient: recipient,
+          senderPublicKey: pub,
+          text: utf8.decode(bytes));
+      cacheText(sent.id, utf8.decode(bytes));
+    } else {
+      final sent = await messages.sendPhoto(
+          conversation: conv,
+          recipient: recipient,
+          senderPublicKey: pub,
+          imageBytes: bytes);
+      photoEcho[sent.id] = bytes;
+    }
+    await requests.resolve(req.id, 'resent');
   }
 
   /// Modifica il testo di un proprio messaggio (ri-cifra con nuova K per

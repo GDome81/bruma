@@ -11,6 +11,7 @@ import '../auth/import_identity_screen.dart';
 import '../contacts/add_contact_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../conversation/conversation_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../settings/app_settings_screen.dart';
 import '../tutorial/tutorial_screen.dart';
 
@@ -26,6 +27,8 @@ class _ChatsScreenState extends State<ChatsScreen>
     with WidgetsBindingObserver {
   late Future<List<ConversationView>> _future;
   StreamSubscription? _sub;
+  StreamSubscription? _reqSub;
+  int _pendingRequests = 0;
 
   @override
   void initState() {
@@ -36,6 +39,10 @@ class _ChatsScreenState extends State<ChatsScreen>
     _sub = AppServices.instance.conversations
         .watchAllMyMessages()
         .listen((_) => _reload());
+    // Richieste in arrivo (riapri contenuto) → badge sulla campanella.
+    _reqSub = AppServices.instance.requests.watchIncoming().listen((list) {
+      if (mounted) setState(() => _pendingRequests = list.length);
+    });
     _maybeShowTutorial();
     // Registra/aggiorna il token FCM (solo APK; no-op su web).
     AppServices.instance.startFcmSync();
@@ -66,6 +73,7 @@ class _ChatsScreenState extends State<ChatsScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
+    _reqSub?.cancel();
     super.dispose();
   }
 
@@ -115,6 +123,18 @@ class _ChatsScreenState extends State<ChatsScreen>
       appBar: AppBar(
         title: const Text('Bruma'),
         actions: [
+          IconButton(
+            tooltip: 'Notifiche',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+            ),
+            icon: _pendingRequests > 0
+                ? Badge.count(
+                    count: _pendingRequests,
+                    child: const Icon(Icons.notifications_none),
+                  )
+                : const Icon(Icons.notifications_none),
+          ),
           IconButton(
             tooltip: 'Contatti',
             onPressed: () async {

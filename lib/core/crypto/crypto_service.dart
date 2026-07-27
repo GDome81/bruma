@@ -14,6 +14,25 @@ class EncryptedContent {
   final SecureKey key; // K (XChaCha20-Poly1305)
 }
 
+/// Identità importata: coppia di chiavi + tag dell'account d'origine (vuoto se
+/// l'export non lo conteneva — formato vecchio).
+class ImportedIdentity {
+  ImportedIdentity(this.keyPair, this.originUid);
+  final KeyPair keyPair;
+  final String originUid;
+}
+
+/// Errore d'import con messaggio UNICO: dati non validi, password errata o
+/// identità legata a un ALTRO account danno tutti lo STESSO messaggio (non si
+/// rivela la causa).
+class IdentityException implements Exception {
+  const IdentityException(
+      [this.message = 'Identità non valida o password errata.']);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 /// Wrapper attorno a libsodium con lo schema crittografico di Bruma.
 ///
 /// Identita': coppia di chiavi X25519 (crypto_box).
@@ -140,14 +159,18 @@ class CryptoService {
     return key;
   }
 
-  /// Esporta la coppia di chiavi come stringa cifrata con [password].
-  String exportIdentity(KeyPair kp, String password) {
+  /// Esporta la coppia di chiavi come stringa cifrata con [password]. [tag] è
+  /// l'id dell'account d'origine, incorporato per rifiutare l'import su un
+  /// account diverso.
+  String exportIdentity(KeyPair kp, String password, {String tag = ''}) {
     final salt = _sodium.randombytes.buf(_saltBytes);
     final key = _deriveKey(password, salt);
     final sk = kp.secretKey.extractBytes();
-    final payload = Uint8List(kp.publicKey.length + sk.length)
+    final tagBytes = utf8.encode(tag);
+    final payload = Uint8List(kp.publicKey.length + sk.length + tagBytes.length)
       ..setAll(0, kp.publicKey)
-      ..setAll(kp.publicKey.length, sk);
+      ..setAll(kp.publicKey.length, sk)
+      ..setAll(kp.publicKey.length + sk.length, tagBytes);
     try {
       final nonce = _sodium.randombytes.buf(_sodium.crypto.secretBox.nonceBytes);
       final cipher =
@@ -169,39 +192,50 @@ class CryptoService {
     }
   }
 
-  /// Importa una coppia di chiavi da una stringa esportata + [password].
-  /// Lancia se il formato non è valido o la password è errata.
-  KeyPair importIdentity(String data, String password) {
-    var s = data.trim();
-    if (s.startsWith(_exportPrefix)) s = s.substring(_exportPrefix.length);
-    final blob = base64Decode(s);
-    final nonceLen = _sodium.crypto.secretBox.nonceBytes;
-    if (blob.isEmpty || blob[0] != 1 || blob.length < 1 + _saltBytes + nonceLen) {
-      throw const FormatException('Formato identità non valido');
-    }
-    final salt = Uint8List.fromList(blob.sublist(1, 1 + _saltBytes));
-    final nonce =
-        Uint8List.fromList(blob.sublist(1 + _saltBytes, 1 + _saltBytes + nonceLen));
-    final cipher = Uint8List.fromList(blob.sublist(1 + _saltBytes + nonceLen));
-    final key = _deriveKey(password, salt);
+  /// Importa da una stringa esportata + [password]. Ritorna la coppia di chiavi
+  /// e il tag dell'account d'origine. Su QUALSIASI fallimento (formato, password
+  /// errata, ecc.) lancia sempre [IdentityException] con lo stesso messaggio.
+  ImportedIdentity importIdentity(String data, String password) {
+    SecureKey? key;
     try {
+      var s = data.trim();
+      if (s.startsWith(_exportPrefix)) s = s.substring(_exportPrefix.length);
+      final blob = base64Decode(s);
+      final nonceLen = _sodium.crypto.secretBox.nonceBytes;
+      if (blob.isEmpty ||
+          blob[0] != 1 ||
+          blob.length < 1 + _saltBytes + nonceLen) {
+        throw const IdentityException();
+      }
+      final salt = Uint8List.fromList(blob.sublist(1, 1 + _saltBytes));
+      final nonce = Uint8List.fromList(
+          blob.sublist(1 + _saltBytes, 1 + _saltBytes + nonceLen));
+      final cipher = Uint8List.fromList(blob.sublist(1 + _saltBytes + nonceLen));
+      key = _deriveKey(password, salt);
       final payload = _sodium.crypto.secretBox
           .openEasy(cipherText: cipher, nonce: nonce, key: key);
       try {
+        if (payload.length < 64) throw const IdentityException();
         final pk = Uint8List.fromList(payload.sublist(0, 32));
         final sk = Uint8List.fromList(payload.sublist(32, 64));
+        final tag = payload.length > 64
+            ? utf8.decode(payload.sublist(64), allowMalformed: true)
+            : '';
         final kp = keyPairFromRaw(pk, sk);
         for (var i = 0; i < sk.length; i++) {
           sk[i] = 0;
         }
-        return kp;
+        return ImportedIdentity(kp, tag);
       } finally {
         for (var i = 0; i < payload.length; i++) {
           payload[i] = 0;
         }
       }
+    } catch (_) {
+      // Messaggio unico: non distinguere dati non validi / password errata.
+      throw const IdentityException();
     } finally {
-      key.dispose();
+      key?.dispose();
     }
   }
 

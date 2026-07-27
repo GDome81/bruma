@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
@@ -559,16 +558,9 @@ class _ConversationScreenState extends State<ConversationScreen>
     return null;
   }
 
-  Future<Message?> _findMessage(String id) async {
-    final local = _resolveMessage(id);
-    if (local != null) return local;
-    return AppServices.instance.messages.getMessage(id);
-  }
-
   Future<void> _renew(ContentRequest req) async {
     try {
-      await AppServices.instance.requests.renew(req.messageId);
-      await AppServices.instance.requests.resolve(req.id, 'renewed');
+      await AppServices.instance.renewRequest(req);
       _snack('Limiti rinnovati.');
     } catch (e) {
       _snack('Rinnovo non riuscito: $e');
@@ -577,31 +569,7 @@ class _ConversationScreenState extends State<ConversationScreen>
 
   Future<void> _resend(ContentRequest req) async {
     try {
-      final m = await _findMessage(req.messageId);
-      if (m == null) {
-        _snack('Messaggio non trovato.');
-        return;
-      }
-      final conv = await AppServices.instance.conversations
-          .getConversation(widget.conversationId);
-      final bytes = await AppServices.instance.openContentBytes(m);
-      final pub = AppServices.instance.identity.publicKey;
-      if (m.type == MessageType.text) {
-        final sent = await AppServices.instance.messages.sendText(
-            conversation: conv,
-            recipient: widget.other,
-            senderPublicKey: pub,
-            text: utf8.decode(bytes));
-        AppServices.instance.cacheText(sent.id, utf8.decode(bytes));
-      } else {
-        final sent = await AppServices.instance.messages.sendPhoto(
-            conversation: conv,
-            recipient: widget.other,
-            senderPublicKey: pub,
-            imageBytes: bytes);
-        AppServices.instance.photoEcho[sent.id] = bytes;
-      }
-      await AppServices.instance.requests.resolve(req.id, 'resent');
+      await AppServices.instance.resendRequest(req);
       _snack('Contenuto reinviato.');
     } catch (e) {
       _snack('Reinvio non riuscito: $e');
@@ -610,7 +578,7 @@ class _ConversationScreenState extends State<ConversationScreen>
 
   Future<void> _deny(ContentRequest req) async {
     try {
-      await AppServices.instance.requests.resolve(req.id, 'denied');
+      await AppServices.instance.denyRequest(req);
     } catch (_) {}
   }
 
