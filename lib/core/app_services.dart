@@ -339,6 +339,12 @@ class AppServices {
     galleryTick.value++;
   }
 
+  /// Toglie la foto dalla galleria SENZA cancellarla (torna protetta/limitata).
+  Future<void> unofferPhotoFromGallery(String messageId) async {
+    await messages.unofferFromGallery(messageId);
+    galleryTick.value++;
+  }
+
   /// Modifica il testo di un proprio messaggio (ri-cifra con nuova K per
   /// destinatario e per sé) e aggiorna la cache in RAM.
   Future<void> editTextMessage({

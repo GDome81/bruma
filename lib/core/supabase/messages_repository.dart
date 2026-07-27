@@ -161,6 +161,13 @@ class MessagesRepository {
     await _client.rpc('offer_to_gallery', params: {'p_message_id': messageId});
   }
 
+  /// Toglie la foto dalla galleria SENZA cancellarla: torna protetta/limitata
+  /// (il blob resta). Solo mittente.
+  Future<void> unofferFromGallery(String messageId) async {
+    await _client
+        .rpc('unoffer_from_gallery', params: {'p_message_id': messageId});
+  }
+
   Future<Message?> getMessage(String id) async {
     final row =
         await _client.from('messages').select().eq('id', id).maybeSingle();

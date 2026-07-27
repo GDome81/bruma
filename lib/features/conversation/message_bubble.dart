@@ -370,6 +370,24 @@ Future<void> showMessageActions(
                   }
                 },
               ),
+            // Foto mia GIÀ in galleria → toglila senza cancellarla (torna protetta).
+            if (isMine && !isText && message.galleryOffered)
+              ListTile(
+                leading: const Icon(Icons.lock_outline),
+                title: const Text('Togli dalla galleria (resta protetta)'),
+                subtitle: const Text(
+                    'Torna una foto limitata, ma NON viene cancellata'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    await AppServices.instance
+                        .unofferPhotoFromGallery(message.id);
+                    snack('Tolta dalla galleria: ora è protetta.');
+                  } catch (e) {
+                    snack('Operazione non riuscita: $e');
+                  }
+                },
+              ),
             if (isText && cached != null)
               ListTile(
                 leading: const Icon(Icons.copy),
@@ -391,12 +409,38 @@ Future<void> showMessageActions(
               ),
             if (isMine && !isText)
               ListTile(
-                leading: const Icon(Icons.visibility_off),
-                title: const Text('Revoca (rendi non apribile)'),
+                leading: Icon(Icons.delete_forever,
+                    color: Theme.of(ctx).colorScheme.error),
+                title: Text('Revoca: cancella la foto',
+                    style:
+                        TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                subtitle: const Text(
+                    'Definitivo: la foto viene eliminata dal server, '
+                    'irrecuperabile per tutti'),
                 onTap: () async {
                   Navigator.pop(ctx);
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (dctx) => AlertDialog(
+                      title: const Text('Cancellare la foto?'),
+                      content: const Text(
+                          'Verrà eliminata definitivamente dal server e non '
+                          'sarà più apribile da nessuno. Non è recuperabile. '
+                          '(Per toglierla solo dalla galleria senza '
+                          'cancellarla, usa "Togli dalla galleria".)'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(dctx, false),
+                            child: const Text('Annulla')),
+                        FilledButton(
+                            onPressed: () => Navigator.pop(dctx, true),
+                            child: const Text('Cancella')),
+                      ],
+                    ),
+                  );
+                  if (ok != true) return;
                   await AppServices.instance.revokeMessage(message);
-                  snack('Contenuto revocato.');
+                  snack('Foto cancellata definitivamente.');
                 },
               ),
             if (isMine)
