@@ -102,10 +102,11 @@ class _DecoyMoonScreenState extends State<DecoyMoonScreen>
               TextField(
                 controller: _field,
                 textInputAction: TextInputAction.search,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9/\-. ]')),
-                ],
+                // NB: niente FilteringTextInputFormatter + tastiera numerica:
+                // quella combinazione, cancellando e riscrivendo, duplica i
+                // caratteri (bug noto IME/composing). La validazione avviene in
+                // _submit (PIN o data gg/mm/aaaa).
+                keyboardType: TextInputType.datetime,
                 decoration: InputDecoration(
                   prefixIcon: IconButton(
                     icon: const Icon(Icons.calendar_month),
