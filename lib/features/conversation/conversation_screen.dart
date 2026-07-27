@@ -571,6 +571,14 @@ class _ConversationScreenState extends State<ConversationScreen>
       );
       AppServices.instance.photoEcho[msg.id] = bytes;
       _replaceTemp(tempId, msg); // 1 spunta → 2 spunte
+      if (galleryOffered) {
+        // Le foto che offro entrano SUBITO nella mia galleria, così so cosa
+        // ho condiviso (best-effort).
+        try {
+          await AppServices.instance.gallery
+              .add(msg.id, widget.conversationId);
+        } catch (_) {}
+      }
     } catch (e) {
       _removeTemp(tempId);
       AppServices.instance.photoEcho.remove(tempId);

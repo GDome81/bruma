@@ -84,6 +84,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
               itemCount: items.length,
               itemBuilder: (_, i) => _GalleryTile(
                 message: items[i],
+                otherName: widget.title,
                 onRemoved: _reload,
               ),
             ),
@@ -95,8 +96,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
 }
 
 class _GalleryTile extends StatefulWidget {
-  const _GalleryTile({required this.message, required this.onRemoved});
+  const _GalleryTile({
+    required this.message,
+    required this.otherName,
+    required this.onRemoved,
+  });
   final Message message;
+  final String otherName;
   final VoidCallback onRemoved;
 
   @override
@@ -178,10 +184,42 @@ class _GalleryTileState extends State<_GalleryTile> {
         ),
       );
     }
+    final mine = widget.message.senderId == AppServices.instance.uid;
     return GestureDetector(
       onTap: _openFull,
       onLongPress: _remove,
-      child: Image.memory(_bytes!, fit: BoxFit.cover, cacheWidth: 360),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.memory(_bytes!, fit: BoxFit.cover, cacheWidth: 360),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              color: Colors.black54,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(mine ? Icons.person : Icons.person_outline,
+                      size: 12, color: Colors.white70),
+                  const SizedBox(width: 3),
+                  Expanded(
+                    child: Text(
+                      mine ? 'Tu' : widget.otherName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(color: Colors.white, fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
