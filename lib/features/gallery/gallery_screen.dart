@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/app_services.dart';
 import '../../core/models/models.dart';
@@ -280,11 +279,37 @@ class _GalleryViewerScreenState extends State<GalleryViewerScreen> {
     super.dispose();
   }
 
+  void _go(int delta) {
+    final target = _index + delta;
+    if (target < 0 || target >= widget.messages.length) return;
+    _controller.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        _go(-1);
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        _go(1);
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     final msgs = widget.messages;
     final m = msgs[_index];
     final mine = m.senderId == AppServices.instance.uid;
+    final hasPrev = _index > 0;
+    final hasNext = _index < msgs.length - 1;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -293,11 +318,67 @@ class _GalleryViewerScreenState extends State<GalleryViewerScreen> {
         title: Text(
             '${_index + 1} / ${msgs.length}  ·  ${mine ? 'Tu' : widget.otherName}'),
       ),
-      body: PageView.builder(
-        controller: _controller,
-        itemCount: msgs.length,
-        onPageChanged: (i) => setState(() => _index = i),
-        itemBuilder: (_, i) => _ViewerPage(message: msgs[i]),
+      body: Focus(
+        autofocus: true,
+        onKeyEvent: _onKey,
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _controller,
+              itemCount: msgs.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (_, i) => _ViewerPage(message: msgs[i]),
+            ),
+            if (hasPrev)
+              _NavArrow(
+                alignment: Alignment.centerLeft,
+                icon: Icons.chevron_left,
+                onTap: () => _go(-1),
+              ),
+            if (hasNext)
+              _NavArrow(
+                alignment: Alignment.centerRight,
+                icon: Icons.chevron_right,
+                onTap: () => _go(1),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Freccia di navigazione semitrasparente (utile soprattutto da PC/mouse,
+/// dove lo swipe non è ovvio).
+class _NavArrow extends StatelessWidget {
+  const _NavArrow({
+    required this.alignment,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final Alignment alignment;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: alignment,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Material(
+          color: Colors.black45,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(icon, color: Colors.white, size: 34),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -315,6 +396,8 @@ class _ViewerPageState extends State<_ViewerPage>
     with AutomaticKeepAliveClientMixin {
   Uint8List? _bytes;
   bool _error = false;
+  final TransformationController _tc = TransformationController();
+  bool _zoomed = false;
 
   @override
   bool get wantKeepAlive => true; // non ri-decifrare tornando indietro
@@ -322,7 +405,23 @@ class _ViewerPageState extends State<_ViewerPage>
   @override
   void initState() {
     super.initState();
+    _tc.addListener(_onTransform);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tc.removeListener(_onTransform);
+    _tc.dispose();
+    super.dispose();
+  }
+
+  // Con panEnabled sempre true, InteractiveViewer mangia il drag orizzontale e
+  // il PageView non scorre più (soprattutto col mouse da PC). Abilito il pan
+  // solo quando la foto è ingrandita: da non-ingrandita lo swipe passa al pager.
+  void _onTransform() {
+    final zoomed = _tc.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
   }
 
   Future<void> _load() async {
@@ -347,6 +446,8 @@ class _ViewerPageState extends State<_ViewerPage>
       return const Center(child: CircularProgressIndicator());
     }
     return InteractiveViewer(
+      transformationController: _tc,
+      panEnabled: _zoomed,
       maxScale: 5,
       child: Center(
         child: Image.memory(_bytes!, fit: BoxFit.contain, gaplessPlayback: true),
