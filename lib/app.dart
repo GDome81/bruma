@@ -126,15 +126,16 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
           ValueListenableBuilder<bool>(
             valueListenable: AppServices.instance.panicMode,
             builder: (_, panic, _) => panic
-                // Navigator dedicato: la maschera è disegnata SOPRA il Navigator
+                // Overlay dedicato: la maschera è disegnata SOPRA il Navigator
                 // dell'app, quindi da sola non avrebbe un Overlay ancestor →
-                // i Tooltip, il menu di selezione testo dei campi e i dialog
-                // fallirebbero ("No Overlay widget found"). Il Navigator ne
-                // fornisce uno e ospita eventuali route della maschera.
+                // Tooltip e menu di selezione testo dei campi fallirebbero
+                // ("No Overlay widget found"). Usiamo un Overlay (NON un
+                // Navigator: quello creava conflitti Hero/_debugLocked all'avvio).
                 ? Positioned.fill(
-                    child: Navigator(
-                      onGenerateRoute: (_) =>
-                          MaterialPageRoute(builder: (_) => _decoy()),
+                    child: Overlay(
+                      initialEntries: [
+                        OverlayEntry(builder: (_) => _decoy()),
+                      ],
                     ),
                   )
                 : const SizedBox.shrink(),
