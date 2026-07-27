@@ -575,8 +575,8 @@ class _ConversationScreenState extends State<ConversationScreen>
         // Le foto che offro entrano SUBITO nella mia galleria, così so cosa
         // ho condiviso (best-effort).
         try {
-          await AppServices.instance.gallery
-              .add(msg.id, widget.conversationId);
+          await AppServices.instance
+              .addToGallery(msg.id, widget.conversationId);
         } catch (_) {}
       }
     } catch (e) {

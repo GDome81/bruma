@@ -94,6 +94,10 @@ class AppServices {
   /// le reactions senza aspettare l'eco realtime (che a volte tarda).
   final ValueNotifier<int> reactionsTick = ValueNotifier<int>(0);
 
+  /// Bump quando cambia l'appartenenza alla galleria (aggiunta/rimozione/offerta):
+  /// le bolle foto rileggono lo stato "in galleria".
+  final ValueNotifier<int> galleryTick = ValueNotifier<int>(0);
+
   /// Modalità "panic": quando attiva, l'app mostra un decoy (calcolatrice) al
   /// posto del login finché non si sblocca. Persistita in LocalPrefs.
   final ValueNotifier<bool> panicMode = ValueNotifier<bool>(false);
@@ -313,6 +317,26 @@ class AppServices {
       photoEcho[sent.id] = bytes;
     }
     await requests.resolve(req.id, 'resent');
+  }
+
+  // --- Galleria (wrapper che notificano le bolle via galleryTick) ---------
+
+  Future<void> addToGallery(String messageId, String conversationId) async {
+    await gallery.add(messageId, conversationId);
+    galleryTick.value++;
+  }
+
+  Future<void> removeFromGallery(String messageId) async {
+    await gallery.remove(messageId);
+    galleryTick.value++;
+  }
+
+  /// Offre alla galleria una foto già inviata (mittente) e la aggiunge subito
+  /// alla propria galleria.
+  Future<void> offerPhotoToGallery(String messageId, String conversationId) async {
+    await messages.offerToGallery(messageId);
+    await gallery.add(messageId, conversationId);
+    galleryTick.value++;
   }
 
   /// Modifica il testo di un proprio messaggio (ri-cifra con nuova K per

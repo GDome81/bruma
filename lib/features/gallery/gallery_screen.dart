@@ -156,7 +156,7 @@ class _GalleryTileState extends State<_GalleryTile> {
     );
     if (ok != true) return;
     try {
-      await AppServices.instance.gallery.remove(widget.message.id);
+      await AppServices.instance.removeFromGallery(widget.message.id);
       widget.onRemoved();
     } catch (_) {}
   }

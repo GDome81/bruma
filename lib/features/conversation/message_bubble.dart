@@ -337,12 +337,12 @@ Future<void> showMessageActions(
                       Navigator.pop(ctx);
                       try {
                         if (saved) {
-                          await AppServices.instance.gallery
-                              .remove(message.id);
+                          await AppServices.instance
+                              .removeFromGallery(message.id);
                           snack('Rimossa dalla galleria.');
                         } else {
-                          await AppServices.instance.gallery
-                              .add(message.id, message.conversationId);
+                          await AppServices.instance.addToGallery(
+                              message.id, message.conversationId);
                           snack('Aggiunta alla galleria.');
                         }
                       } catch (e) {
@@ -350,6 +350,24 @@ Future<void> showMessageActions(
                       }
                     },
                   );
+                },
+              ),
+            // Foto mia NON ancora offerta → rendila disponibile in galleria.
+            if (isMine && !isText && !message.galleryOffered)
+              ListTile(
+                leading: const Icon(Icons.collections_outlined),
+                title: const Text('Rendi disponibile in galleria'),
+                subtitle:
+                    const Text('Senza limiti di aperture (revocabile)'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    await AppServices.instance.offerPhotoToGallery(
+                        message.id, message.conversationId);
+                    snack('Ora è disponibile in galleria.');
+                  } catch (e) {
+                    snack('Operazione non riuscita: $e');
+                  }
                 },
               ),
             if (isText && cached != null)
@@ -673,6 +691,7 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
   Duration _remaining = Duration.zero;
   bool _opening = false;
   bool _requested = false;
+  bool _inGallery = false; // solo per foto galleryOffered
 
   @override
   void initState() {
@@ -684,6 +703,19 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
         : AppServices.instance.access.getMyAccess(widget.message.id);
     // Aggiorna lo stato quando una richiesta viene gestita (rinnovo/reinvio).
     AppServices.instance.accessTick.addListener(_reloadAccess);
+    if (widget.message.galleryOffered) {
+      _loadGalleryState();
+      AppServices.instance.galleryTick.addListener(_loadGalleryState);
+    }
+  }
+
+  Future<void> _loadGalleryState() async {
+    if (!widget.message.galleryOffered) return;
+    try {
+      final saved =
+          await AppServices.instance.gallery.isSaved(widget.message.id);
+      if (mounted) setState(() => _inGallery = saved);
+    } catch (_) {}
   }
 
   void _reloadAccess() {
@@ -802,6 +834,7 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
   @override
   void dispose() {
     AppServices.instance.accessTick.removeListener(_reloadAccess);
+    AppServices.instance.galleryTick.removeListener(_loadGalleryState);
     _timer?.cancel();
     if (_secured) SecureScreenGuard.release();
     final b = _bytes;
@@ -943,9 +976,16 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
     final openable = a?.isOpenable ?? false;
     final protected = a?.protectionEnabled ?? false;
 
+    final gallery = widget.message.galleryOffered;
     String title;
     String subtitle;
-    if (!protected) {
+    if (gallery && openable) {
+      // Foto galleria: distingui "disponibile" (offerta) da "in galleria" (salvata).
+      title = _inGallery ? 'In galleria' : 'Foto disponibile';
+      subtitle = _inGallery
+          ? 'Salvata · senza limiti'
+          : 'Senza limiti · tieni premuto per salvarla';
+    } else if (!protected) {
       title = 'Foto';
       subtitle = 'Tocca per aprire';
     } else if (!openable) {
@@ -957,9 +997,6 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
       } else {
         subtitle = 'Aperture esaurite';
       }
-    } else if (widget.message.galleryOffered) {
-      title = 'Foto · galleria';
-      subtitle = 'Senza limiti · tieni premuto per salvarla';
     } else {
       title = 'Foto protetta';
       final opens = a!.unlimitedOpens
@@ -1001,12 +1038,16 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                        widget.message.galleryOffered
-                            ? Icons.collections_outlined
+                        (gallery && openable)
+                            ? (_inGallery
+                                ? Icons.bookmark
+                                : Icons.collections_outlined)
                             : (protected
                                 ? Icons.lock_outline
                                 : Icons.photo_outlined),
-                        color: cs.primary),
+                        color: (gallery && openable && _inGallery)
+                            ? Colors.green
+                            : cs.primary),
                     const SizedBox(width: 10),
                     Flexible(
                       child: Column(

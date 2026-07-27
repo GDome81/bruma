@@ -155,6 +155,12 @@ class MessagesRepository {
     return Message.fromMap(inserted);
   }
 
+  /// Offre alla galleria una foto già inviata (solo mittente): la rende
+  /// protetta ma senza limiti e marca il messaggio come `gallery_offered`.
+  Future<void> offerToGallery(String messageId) async {
+    await _client.rpc('offer_to_gallery', params: {'p_message_id': messageId});
+  }
+
   Future<Message?> getMessage(String id) async {
     final row =
         await _client.from('messages').select().eq('id', id).maybeSingle();
