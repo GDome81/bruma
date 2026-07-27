@@ -4,6 +4,7 @@ import '../../core/app_services.dart';
 import '../../core/models/models.dart';
 import '../../shared/widgets.dart';
 import '../conversation/conversation_screen.dart';
+import '../gallery/gallery_screen.dart';
 import 'add_contact_screen.dart';
 
 /// Elenco dei contatti aggiunti; toccandone uno si apre la conversazione.
@@ -40,6 +41,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
       builder: (_) => ConversationScreen(
         conversationId: conv.id,
         other: contact,
+      ),
+    ));
+  }
+
+  Future<void> _openGallery(Profile contact) async {
+    final conv =
+        await AppServices.instance.conversations.getWithUser(contact.id);
+    if (!mounted) return;
+    if (conv == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Conversazione non trovata.')));
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => GalleryScreen(
+        conversationId: conv.id,
+        title: contact.displayName,
       ),
     ));
   }
@@ -107,6 +125,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 return ListTile(
                   leading: CircleAvatar(child: Text(initials)),
                   title: Text(c.displayName),
+                  trailing: IconButton(
+                    tooltip: 'Galleria',
+                    icon: const Icon(Icons.collections_outlined),
+                    onPressed: () => _openGallery(c),
+                  ),
                   onTap: () => _openChat(c),
                 );
               },

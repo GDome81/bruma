@@ -21,6 +21,7 @@ import 'supabase/access_repository.dart';
 import 'supabase/auth_repository.dart';
 import 'supabase/contacts_repository.dart';
 import 'supabase/conversations_repository.dart';
+import 'supabase/gallery_repository.dart';
 import 'supabase/messages_repository.dart';
 import 'supabase/profile_repository.dart';
 import 'supabase/requests_repository.dart';
@@ -44,6 +45,7 @@ class AppServices {
     required this.stats,
     required this.storage,
     required this.requests,
+    required this.gallery,
   });
 
   static late AppServices instance;
@@ -66,6 +68,7 @@ class AppServices {
   final StatsRepository stats;
   final StorageRepository storage;
   final RequestsRepository requests;
+  final GalleryRepository gallery;
 
   KeyPair? _identity;
   Profile? myProfile;
@@ -148,6 +151,7 @@ class AppServices {
       stats: StatsRepository(client),
       storage: storage,
       requests: RequestsRepository(client),
+      gallery: GalleryRepository(client),
     );
   }
 

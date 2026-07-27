@@ -6,6 +6,13 @@ import 'package:flutter/material.dart';
 import '../../shared/widgets.dart';
 import 'temp_file.dart';
 
+/// Esito della fotocamera: i byte della foto + se offrirla alla galleria.
+class CameraResult {
+  const CameraResult(this.bytes, this.toGallery);
+  final Uint8List bytes;
+  final bool toGallery;
+}
+
 /// Fotocamera in-app. Scatta una foto, ne legge i byte in memoria e li
 /// restituisce (via pop). Il file temporaneo creato dal plugin viene
 /// cancellato subito: la foto non entra mai nella galleria di sistema.
@@ -92,9 +99,13 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  bool _toGallery = false;
+
   void _send() {
     final b = _preview;
-    if (b != null) Navigator.of(context).pop<Uint8List>(b);
+    if (b != null) {
+      Navigator.of(context).pop<CameraResult>(CameraResult(b, _toGallery));
+    }
   }
 
   /// Torna alla fotocamera dal vivo. Su web (e a volte su mobile) il flusso
@@ -161,8 +172,22 @@ class _CameraScreenState extends State<CameraScreen>
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CheckboxListTile(
+                  value: _toGallery,
+                  onChanged: (v) => setState(() => _toGallery = v ?? false),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('Disponibile in galleria',
+                      style: TextStyle(color: Colors.white, fontSize: 14)),
+                  subtitle: const Text('Cifrata, senza limiti di aperture',
+                      style: TextStyle(color: Colors.white54, fontSize: 12)),
+                ),
+                Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
@@ -187,6 +212,8 @@ class _CameraScreenState extends State<CameraScreen>
                     icon: const Icon(Icons.send),
                     label: const Text('Invia'),
                   ),
+                ),
+              ],
                 ),
               ],
             ),

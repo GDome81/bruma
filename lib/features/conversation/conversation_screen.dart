@@ -15,6 +15,7 @@ import '../../core/models/models.dart';
 import '../../shared/emoji_config.dart';
 import '../../shared/widgets.dart';
 import '../camera/camera_screen.dart';
+import '../gallery/gallery_screen.dart';
 import '../settings/chat_settings_screen.dart';
 import '../stats/stats_screen.dart';
 import 'message_bubble.dart';
@@ -422,10 +423,12 @@ class _ConversationScreenState extends State<ConversationScreen>
 
   Future<void> _sendPhoto() async {
     if (_sending) return;
-    final bytes = await Navigator.of(context).push<Uint8List>(
+    final r = await Navigator.of(context).push<CameraResult>(
       MaterialPageRoute(builder: (_) => const CameraScreen()),
     );
-    if (bytes != null) await _sendPhotoBytes(bytes);
+    if (r != null) {
+      await _sendPhotoBytes(r.bytes, galleryOffered: r.toGallery);
+    }
   }
 
   /// Allega una foto esistente dalla galleria (con anteprima di conferma).
@@ -436,64 +439,89 @@ class _ConversationScreenState extends State<ConversationScreen>
     if (file == null) return;
     final bytes = await file.readAsBytes();
     if (!mounted) return;
-    final ok = await _confirmImage(bytes);
-    if (ok == true) await _sendPhotoBytes(bytes);
+    final r = await _confirmImage(bytes);
+    if (r != null) await _sendPhotoBytes(r.bytes, galleryOffered: r.toGallery);
   }
 
-  Future<bool?> _confirmImage(Uint8List bytes) {
-    return showDialog<bool>(
+  Future<CameraResult?> _confirmImage(Uint8List bytes) {
+    var toGallery = false;
+    return showDialog<CameraResult>(
       context: context,
       builder: (ctx) => Dialog.fullscreen(
         backgroundColor: Colors.black,
-        child: Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
+        child: StatefulBuilder(
+          builder: (ctx, setLocal) => Scaffold(
             backgroundColor: Colors.black,
-            foregroundColor: Colors.white,
-            title: const Text('Anteprima'),
-            leading: IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => Navigator.pop(ctx, false),
+            appBar: AppBar(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              title: const Text('Anteprima'),
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(ctx),
+              ),
             ),
-          ),
-          body: Center(
-            child: InteractiveViewer(
-              child: Image.memory(bytes, fit: BoxFit.contain),
+            body: Center(
+              child: InteractiveViewer(
+                child: Image.memory(bytes, fit: BoxFit.contain),
+              ),
             ),
-          ),
-          // Barra fissa: tasti affiancati e sempre visibili (anche web mobile).
-          bottomNavigationBar: Container(
-            color: Colors.black,
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white54),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        icon: const Icon(Icons.close),
-                        label: const Text('Annulla'),
+            bottomNavigationBar: Container(
+              color: Colors.black,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CheckboxListTile(
+                        value: toGallery,
+                        onChanged: (v) =>
+                            setLocal(() => toGallery = v ?? false),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: const Text('Disponibile in galleria',
+                            style:
+                                TextStyle(color: Colors.white, fontSize: 14)),
+                        subtitle: const Text(
+                            'Cifrata, senza limiti di aperture',
+                            style:
+                                TextStyle(color: Colors.white54, fontSize: 12)),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        icon: const Icon(Icons.send),
-                        label: const Text('Invia'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => Navigator.pop(ctx),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: Colors.white54),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              icon: const Icon(Icons.close),
+                              label: const Text('Annulla'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: () => Navigator.pop(
+                                  ctx, CameraResult(bytes, toGallery)),
+                              style: FilledButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              icon: const Icon(Icons.send),
+                              label: const Text('Invia'),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -503,7 +531,8 @@ class _ConversationScreenState extends State<ConversationScreen>
     );
   }
 
-  Future<void> _sendPhotoBytes(Uint8List bytes) async {
+  Future<void> _sendPhotoBytes(Uint8List bytes,
+      {bool galleryOffered = false}) async {
     if (_sending) return;
     final replyTo = _replyingTo?.id;
     // Bolla OTTIMISTICA (1 spunta) subito, con l'anteprima locale: l'upload di
@@ -519,6 +548,7 @@ class _ConversationScreenState extends State<ConversationScreen>
       createdAt: DateTime.now().toUtc(),
       replyTo: replyTo,
       pending: true,
+      galleryOffered: galleryOffered,
     );
     AppServices.instance.photoEcho[tempId] = bytes;
     setState(() {
@@ -537,6 +567,7 @@ class _ConversationScreenState extends State<ConversationScreen>
         senderPublicKey: AppServices.instance.identity.publicKey,
         imageBytes: bytes,
         replyTo: replyTo,
+        galleryOffered: galleryOffered,
       );
       AppServices.instance.photoEcho[msg.id] = bytes;
       _replaceTemp(tempId, msg); // 1 spunta → 2 spunte
@@ -675,6 +706,16 @@ class _ConversationScreenState extends State<ConversationScreen>
                   : Icons.notifications_none),
             );
           }),
+          IconButton(
+            tooltip: 'Galleria',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => GalleryScreen(
+                conversationId: widget.conversationId,
+                title: widget.other.displayName,
+              ),
+            )),
+            icon: const Icon(Icons.collections_outlined),
+          ),
           IconButton(
             tooltip: 'Statistiche',
             onPressed: _openStats,

@@ -320,6 +320,38 @@ Future<void> showMessageActions(
                 AppServices.instance.messages.removeReaction(message.id);
               },
             ),
+            // Foto offerta alla galleria → salva/rimuovi dalla propria galleria.
+            if (message.galleryOffered && !isText)
+              FutureBuilder<bool>(
+                future: AppServices.instance.gallery.isSaved(message.id),
+                builder: (_, snap) {
+                  final saved = snap.data ?? false;
+                  return ListTile(
+                    leading: Icon(saved
+                        ? Icons.bookmark_remove_outlined
+                        : Icons.bookmark_add_outlined),
+                    title: Text(saved
+                        ? 'Rimuovi dalla galleria'
+                        : 'Aggiungi alla galleria'),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      try {
+                        if (saved) {
+                          await AppServices.instance.gallery
+                              .remove(message.id);
+                          snack('Rimossa dalla galleria.');
+                        } else {
+                          await AppServices.instance.gallery
+                              .add(message.id, message.conversationId);
+                          snack('Aggiunta alla galleria.');
+                        }
+                      } catch (e) {
+                        snack('Operazione non riuscita: $e');
+                      }
+                    },
+                  );
+                },
+              ),
             if (isText && cached != null)
               ListTile(
                 leading: const Icon(Icons.copy),
@@ -925,6 +957,9 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
       } else {
         subtitle = 'Aperture esaurite';
       }
+    } else if (widget.message.galleryOffered) {
+      title = 'Foto · galleria';
+      subtitle = 'Senza limiti · tieni premuto per salvarla';
     } else {
       title = 'Foto protetta';
       final opens = a!.unlimitedOpens
@@ -966,9 +1001,11 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                        protected
-                            ? Icons.lock_outline
-                            : Icons.photo_outlined,
+                        widget.message.galleryOffered
+                            ? Icons.collections_outlined
+                            : (protected
+                                ? Icons.lock_outline
+                                : Icons.photo_outlined),
                         color: cs.primary),
                     const SizedBox(width: 10),
                     Flexible(

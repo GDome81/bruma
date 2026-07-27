@@ -108,6 +108,7 @@ class Message {
     this.deletedAt,
     this.replyTo,
     this.pending = false,
+    this.galleryOffered = false,
   });
 
   final String id;
@@ -127,6 +128,9 @@ class Message {
   /// esiste sul server: [fromMap] lo lascia sempre false.
   final bool pending;
 
+  /// Foto offerta alla galleria: cifrata ma senza limiti di apertura.
+  final bool galleryOffered;
+
   bool get isEdited => editedAt != null;
   bool get isDeleted => deletedAt != null;
 
@@ -145,6 +149,7 @@ class Message {
             ? null
             : DateTime.parse(m['deleted_at'] as String),
         replyTo: m['reply_to'] as String?,
+        galleryOffered: (m['gallery_offered'] ?? false) as bool,
       );
 }
 

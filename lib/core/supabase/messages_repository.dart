@@ -106,6 +106,7 @@ class MessagesRepository {
     required Uint8List senderPublicKey,
     required Uint8List imageBytes,
     String? replyTo,
+    bool galleryOffered = false,
   }) async {
     final enc = _crypto.encryptContent(imageBytes);
     late final String wrappedForRecipient;
@@ -133,18 +134,22 @@ class MessagesRepository {
           'type': messageTypeToString(MessageType.photo),
           'storage_path': objectName,
           'reply_to': ?replyTo,
+          'gallery_offered': galleryOffered,
         })
         .select()
         .single();
     final messageId = inserted['id'] as String;
 
-    // Destinatario: foto protetta (snapshot delle regole). Mittente: copia
+    // Destinatario: se offerta alla galleria → protetta ma ILLIMITATA (0/0);
+    // altrimenti snapshot delle regole della conversazione. Mittente: copia
     // libera (protezione off) per rivedere la propria foto senza consumare il
     // contatore del destinatario.
     await _client.from('message_access').insert([
-      _accessRow(messageId, recipient.id, wrappedForRecipient,
-          conversation.protectionEnabled, conversation.maxOpens,
-          conversation.maxDurationSeconds),
+      galleryOffered
+          ? _accessRow(messageId, recipient.id, wrappedForRecipient, true, 0, 0)
+          : _accessRow(messageId, recipient.id, wrappedForRecipient,
+              conversation.protectionEnabled, conversation.maxOpens,
+              conversation.maxDurationSeconds),
       _accessRow(messageId, _uid, wrappedForSelf, false, 0, 0),
     ]);
     return Message.fromMap(inserted);
