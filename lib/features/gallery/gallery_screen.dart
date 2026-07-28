@@ -26,6 +26,7 @@ class GalleryScreen extends StatefulWidget {
 class _GalleryScreenState extends State<GalleryScreen> {
   List<Message>? _items; // null = in caricamento
   Object? _error;
+  int _visible = 5; // paginazione: quante foto mostrare (decifra solo queste)
 
   @override
   void initState() {
@@ -102,24 +103,48 @@ class _GalleryScreenState extends State<GalleryScreen> {
             'Tieni premuto su una foto in chat per aggiungerla.',
       );
     }
+    // Mostro solo le prime _visible foto: solo queste vengono decifrate, così
+    // aprire una chat con tante foto non scatena una raffica di decifrature.
+    final count = items.length < _visible ? items.length : _visible;
     return RefreshIndicator(
       onRefresh: _load,
-      child: GridView.builder(
-        padding: const EdgeInsets.all(3),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 3,
-          mainAxisSpacing: 3,
-        ),
-        itemCount: items.length,
-        itemBuilder: (_, i) => _GalleryTile(
-          key: ValueKey(items[i].id),
-          message: items[i],
-          otherName: widget.title,
-          onOpen: () => _openViewer(i),
-          onUnavailable: () => _hide(items[i].id),
-          onRemoved: _load,
-        ),
+      child: CustomScrollView(
+        // Sempre scrollabile: il pull-to-refresh funziona anche con poche foto.
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(3),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 3,
+                mainAxisSpacing: 3,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => _GalleryTile(
+                  key: ValueKey(items[i].id),
+                  message: items[i],
+                  otherName: widget.title,
+                  onOpen: () => _openViewer(i),
+                  onUnavailable: () => _hide(items[i].id),
+                  onRemoved: _load,
+                ),
+                childCount: count,
+              ),
+            ),
+          ),
+          if (_visible < items.length)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                child: OutlinedButton.icon(
+                  onPressed: () => setState(() => _visible += 5),
+                  icon: const Icon(Icons.expand_more),
+                  label: Text('Carica altro (${items.length - _visible})'),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
