@@ -4,27 +4,32 @@ import '../../core/app_services.dart';
 import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../shared/widgets.dart';
-import '../conversation/conversation_screen.dart';
 
-/// Messaggi salvati nei preferiti (SOLO locali su questo dispositivo), di tutte
-/// le chat. Toccandone uno si apre la relativa chat nel punto del messaggio.
+/// Messaggi salvati nei preferiti di UNA chat (solo locali su questo
+/// dispositivo). Toccandone uno si torna alla chat e si salta al suo punto.
 /// Non decifra nulla: l'anteprima appare solo se il contenuto è già in RAM
-/// (così aprire questa lista non consuma "aperture" né segna come letto).
+/// (così aprire la lista non consuma "aperture" né segna come letto).
 class FavoritesScreen extends StatefulWidget {
-  const FavoritesScreen({super.key});
+  const FavoritesScreen({
+    super.key,
+    required this.conversationId,
+    required this.other,
+    required this.onJump,
+  });
+
+  final String conversationId;
+  final Profile other;
+
+  /// Chiamata (dopo aver chiuso questa schermata) per saltare al messaggio
+  /// nella chat sottostante, senza aprire una seconda copia della chat.
+  final void Function(String messageId) onJump;
 
   @override
   State<FavoritesScreen> createState() => _FavoritesScreenState();
 }
 
-class _FavEntry {
-  _FavEntry(this.message, this.other);
-  final Message message;
-  final Profile other;
-}
-
 class _FavoritesScreenState extends State<FavoritesScreen> {
-  late Future<List<_FavEntry>> _future;
+  late Future<List<Message>> _future;
 
   @override
   void initState() {
@@ -32,50 +37,40 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     _future = _load();
   }
 
-  Future<List<_FavEntry>> _load() async {
-    final favs = LocalPrefs.favorites(); // (convId, msgId), recenti prima
+  Future<List<Message>> _load() async {
+    final favs = LocalPrefs.favorites()
+        .where((f) => f.conversationId == widget.conversationId)
+        .toList(); // recenti prima
     if (favs.isEmpty) return [];
     final ids = favs.map((f) => f.messageId).toList();
     final msgs = await AppServices.instance.messages.getByIds(ids);
     final byId = {for (final m in msgs) m.id: m};
-    // Nomi contatto (e Profile per aprire la chat) senza query extra: riuso la
-    // lista chat che già associa conversazione → altro utente.
-    final views =
-        await AppServices.instance.conversations.listConversationViews();
-    final otherByConv = {for (final v in views) v.conversation.id: v.other};
-    final out = <_FavEntry>[];
-    for (final f in favs) {
-      final m = byId[f.messageId];
-      final other = otherByConv[f.conversationId];
-      if (m != null && other != null) out.add(_FavEntry(m, other));
-    }
-    return out;
+    // Mantieni l'ordine dei preferiti (recenti prima); salta quelli spariti.
+    return [
+      for (final f in favs)
+        if (byId[f.messageId] != null) byId[f.messageId]!,
+    ];
   }
 
   void _reload() => setState(() => _future = _load());
 
-  Future<void> _open(_FavEntry e) async {
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ConversationScreen(
-        conversationId: e.message.conversationId,
-        other: e.other,
-        jumpToMessageId: e.message.id,
-      ),
-    ));
-    if (mounted) _reload(); // al ritorno: potrei aver tolto un preferito
+  void _open(Message m) {
+    // Chiudi la lista e chiedi alla chat sottostante di saltare al messaggio.
+    Navigator.of(context).pop();
+    widget.onJump(m.id);
   }
 
-  Future<void> _remove(_FavEntry e) async {
-    await LocalPrefs.setFavorite(
-        e.message.conversationId, e.message.id, false);
+  Future<void> _remove(Message m) async {
+    await AppServices.instance
+        .setFavorite(m.conversationId, m.id, false);
     _reload();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Preferiti')),
-      body: FutureBuilder<List<_FavEntry>>(
+      appBar: AppBar(title: Text('Preferiti · ${widget.other.displayName}')),
+      body: FutureBuilder<List<Message>>(
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done && !snap.hasData) {
@@ -104,8 +99,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     );
   }
 
-  Widget _tile(_FavEntry e) {
-    final m = e.message;
+  Widget _tile(Message m) {
     final mine = m.senderId == AppServices.instance.uid;
     final isPhoto = m.type == MessageType.photo;
     // Anteprima SOLO da cache in RAM: non fa richieste né consuma aperture.
@@ -140,16 +134,15 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
     return ListTile(
       leading: leading,
-      title: Text('${mine ? 'Tu: ' : ''}$title',
-          maxLines: 2, overflow: TextOverflow.ellipsis),
-      subtitle:
-          Text('${e.other.displayName} · ${formatTimestamp(m.createdAt)}'),
+      title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+          '${mine ? 'Tu' : widget.other.displayName} · ${formatTimestamp(m.createdAt)}'),
       trailing: IconButton(
         icon: const Icon(Icons.star, color: Colors.amber),
         tooltip: 'Rimuovi dai preferiti',
-        onPressed: () => _remove(e),
+        onPressed: () => _remove(m),
       ),
-      onTap: () => _open(e),
+      onTap: () => _open(m),
     );
   }
 }

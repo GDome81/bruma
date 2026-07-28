@@ -322,8 +322,8 @@ Future<void> showMessageActions(
                   isFav ? 'Rimuovi dai preferiti' : 'Salva nei preferiti'),
               onTap: () async {
                 Navigator.pop(ctx);
-                await LocalPrefs.setFavorite(
-                    message.conversationId, message.id, !isFav);
+                await AppServices.instance
+                    .setFavorite(message.conversationId, message.id, !isFav);
                 snack(isFav
                     ? 'Rimosso dai preferiti.'
                     : 'Salvato nei preferiti.');
@@ -517,6 +517,10 @@ Widget _footer(BuildContext context, Message message, {required bool mine}) {
   return Row(
     mainAxisSize: MainAxisSize.min,
     children: [
+      if (LocalPrefs.isFavorite(message.id)) ...[
+        const Icon(Icons.star, size: 13, color: Colors.amber),
+        const SizedBox(width: 4),
+      ],
       if (message.isEdited) ...[
         Text('modificato · ',
             style: Theme.of(context)

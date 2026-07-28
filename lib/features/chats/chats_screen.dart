@@ -11,7 +11,6 @@ import '../auth/import_identity_screen.dart';
 import '../contacts/add_contact_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../conversation/conversation_screen.dart';
-import '../favorites/favorites_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../settings/app_settings_screen.dart';
 import '../tutorial/tutorial_screen.dart';
@@ -124,13 +123,6 @@ class _ChatsScreenState extends State<ChatsScreen>
       appBar: AppBar(
         title: const Text('Bruma'),
         actions: [
-          IconButton(
-            tooltip: 'Preferiti',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const FavoritesScreen()),
-            ),
-            icon: const Icon(Icons.star_border),
-          ),
           IconButton(
             tooltip: 'Notifiche',
             onPressed: () => Navigator.of(context).push(

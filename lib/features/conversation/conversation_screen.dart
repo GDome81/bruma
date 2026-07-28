@@ -15,6 +15,7 @@ import '../../core/models/models.dart';
 import '../../shared/emoji_config.dart';
 import '../../shared/widgets.dart';
 import '../camera/camera_screen.dart';
+import '../favorites/favorites_screen.dart';
 import '../gallery/gallery_screen.dart';
 import '../settings/chat_settings_screen.dart';
 import '../stats/stats_screen.dart';
@@ -27,15 +28,10 @@ class ConversationScreen extends StatefulWidget {
     super.key,
     required this.conversationId,
     required this.other,
-    this.jumpToMessageId,
   });
 
   final String conversationId;
   final Profile other;
-
-  /// Se valorizzato (es. da un Preferito), all'apertura la chat salta a questo
-  /// messaggio e lo evidenzia.
-  final String? jumpToMessageId;
 
   @override
   State<ConversationScreen> createState() => _ConversationScreenState();
@@ -89,6 +85,8 @@ class _ConversationScreenState extends State<ConversationScreen>
     // Ricarica subito le reactions quando io ne aggiungo/tolgo una (non aspetto
     // l'eco realtime, che a volte tarda).
     AppServices.instance.reactionsTick.addListener(_reloadReactions);
+    // Aggiorna la stellina sulle bolle quando cambio i preferiti.
+    AppServices.instance.favoritesTick.addListener(_onFavoritesChanged);
     _opensSub = AppServices.instance.stats
         .watchMyOpenEvents()
         .listen((_) => AppServices.instance.openEventsTick.value++);
@@ -144,6 +142,7 @@ class _ConversationScreenState extends State<ConversationScreen>
     WidgetsBinding.instance.removeObserver(this);
     _positions.itemPositions.removeListener(_onPositions);
     AppServices.instance.reactionsTick.removeListener(_reloadReactions);
+    AppServices.instance.favoritesTick.removeListener(_onFavoritesChanged);
     _reactDebounce?.cancel();
     _highlightTimer?.cancel();
     _opensSub?.cancel();
@@ -175,15 +174,7 @@ class _ConversationScreenState extends State<ConversationScreen>
       await _reloadReactions();
       if (!mounted) return;
       setState(() => _loadingInitial = false);
-      // Se arrivo da un Preferito, salta subito a quel messaggio; altrimenti
-      // posiziona sul primo non letto / in fondo.
-      if (widget.jumpToMessageId != null) {
-        _didInitialScroll = true; // evita che lo scroll iniziale lo scavalchi
-        WidgetsBinding.instance.addPostFrameCallback(
-            (_) => _goToMessage(widget.jumpToMessageId!));
-      } else {
-        _scheduleInitialScroll();
-      }
+      _scheduleInitialScroll();
       _markRead();
     } catch (e) {
       if (mounted) {
@@ -690,6 +681,50 @@ class _ConversationScreenState extends State<ConversationScreen>
     );
   }
 
+  void _openGallery() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => GalleryScreen(
+        conversationId: widget.conversationId,
+        title: widget.other.displayName,
+      ),
+    ));
+  }
+
+  void _openFavorites() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => FavoritesScreen(
+        conversationId: widget.conversationId,
+        other: widget.other,
+        // Torna a questa chat (senza duplicarla) e salta al messaggio.
+        onJump: _goToMessage,
+      ),
+    ));
+  }
+
+  Future<void> _toggleMute() async {
+    final muted = LocalPrefs.isChatMuted(widget.conversationId);
+    await AppServices.instance.setChatMuted(widget.conversationId, !muted);
+    if (mounted) setState(() {});
+    _snack(!muted ? 'Chat silenziata' : 'Notifiche riattivate');
+  }
+
+  void _onFavoritesChanged() {
+    if (mounted) setState(() {});
+  }
+
+  PopupMenuItem<String> _menuItem(String value, IconData icon, String label) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 12),
+          Text(label),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final me = AppServices.instance.uid;
@@ -712,40 +747,39 @@ class _ConversationScreenState extends State<ConversationScreen>
           ],
         ),
         actions: [
-          Builder(builder: (_) {
-            final muted = LocalPrefs.isChatMuted(widget.conversationId);
-            return IconButton(
-              tooltip: muted ? 'Riattiva notifiche' : 'Silenzia notifiche',
-              onPressed: () async {
-                await AppServices.instance
-                    .setChatMuted(widget.conversationId, !muted);
-                if (mounted) setState(() {});
-                _snack(!muted ? 'Chat silenziata' : 'Notifiche riattivate');
-              },
-              icon: Icon(muted
-                  ? Icons.notifications_off
-                  : Icons.notifications_none),
-            );
-          }),
-          IconButton(
-            tooltip: 'Galleria',
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => GalleryScreen(
-                conversationId: widget.conversationId,
-                title: widget.other.displayName,
-              ),
-            )),
-            icon: const Icon(Icons.collections_outlined),
-          ),
-          IconButton(
-            tooltip: 'Statistiche',
-            onPressed: _openStats,
-            icon: const Icon(Icons.bar_chart),
-          ),
-          IconButton(
-            tooltip: 'Impostazioni protezione',
-            onPressed: _openSettings,
-            icon: const Icon(Icons.shield_outlined),
+          PopupMenuButton<String>(
+            tooltip: 'Menu',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) {
+              switch (v) {
+                case 'gallery':
+                  _openGallery();
+                case 'stats':
+                  _openStats();
+                case 'favorites':
+                  _openFavorites();
+                case 'protection':
+                  _openSettings();
+                case 'mute':
+                  _toggleMute();
+              }
+            },
+            itemBuilder: (_) {
+              final muted = LocalPrefs.isChatMuted(widget.conversationId);
+              return [
+                _menuItem('gallery', Icons.collections_outlined, 'Galleria'),
+                _menuItem('stats', Icons.bar_chart, 'Statistiche'),
+                _menuItem('favorites', Icons.star_border, 'Preferiti'),
+                _menuItem(
+                    'protection', Icons.shield_outlined, 'Protezione'),
+                const PopupMenuDivider(),
+                _menuItem(
+                  'mute',
+                  muted ? Icons.notifications_off : Icons.notifications_none,
+                  muted ? 'Riattiva notifiche' : 'Silenzia notifiche',
+                ),
+              ];
+            },
           ),
         ],
       ),

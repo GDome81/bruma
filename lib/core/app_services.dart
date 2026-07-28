@@ -103,6 +103,10 @@ class AppServices {
   /// le bolle foto rileggono lo stato "in galleria".
   final ValueNotifier<int> galleryTick = ValueNotifier<int>(0);
 
+  /// Bump quando un messaggio viene aggiunto/tolto dai preferiti: la chat
+  /// aggiorna dal vivo la stellina accanto alle bolle.
+  final ValueNotifier<int> favoritesTick = ValueNotifier<int>(0);
+
   /// Modalità "panic": quando attiva, l'app mostra un decoy (calcolatrice) al
   /// posto del login finché non si sblocca. Persistita in LocalPrefs.
   final ValueNotifier<bool> panicMode = ValueNotifier<bool>(false);
@@ -586,6 +590,13 @@ class AppServices {
       // la tabella potrebbe non esistere ancora: le notifiche in-app funzionano
       // lo stesso, il push la rispetterà quando la migration è applicata.
     }
+  }
+
+  /// Preferiti (solo locali): aggiunge/toglie e notifica la chat via tick.
+  Future<void> setFavorite(
+      String conversationId, String messageId, bool fav) async {
+    await LocalPrefs.setFavorite(conversationId, messageId, fav);
+    favoritesTick.value++;
   }
 
   Future<void> setChatMuted(String conversationId, bool muted) async {
