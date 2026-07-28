@@ -371,6 +371,18 @@ class AppServices {
     galleryTick.value++;
   }
 
+  /// Le MIE foto rese disponibili (senza limiti) in questa chat che NON sono
+  /// più nella mia galleria: utile per ricordare cosa ho condiviso e resta
+  /// accessibile all'altro anche dopo che l'ho tolta dalla mia galleria.
+  /// Basata solo sui miei dati (nessuna lettura della galleria altrui).
+  Future<List<Message>> myAvailablePhotosNotSaved(String conversationId) async {
+    final mine = await messages.myPhotoMessages(conversationId);
+    final offered = mine.where((m) => m.galleryOffered).toList();
+    if (offered.isEmpty) return [];
+    final saved = await gallery.savedIds(conversationId);
+    return offered.where((m) => !saved.contains(m.id)).toList();
+  }
+
   /// Modifica il testo di un proprio messaggio (ri-cifra con nuova K per
   /// destinatario e per sé) e aggiorna la cache in RAM.
   Future<void> editTextMessage({

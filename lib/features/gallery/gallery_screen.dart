@@ -83,7 +83,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Galleria · ${widget.title}')),
+      appBar: AppBar(
+        title: Text('Galleria · ${widget.title}'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.collections_bookmark_outlined),
+            tooltip: 'Le mie foto disponibili',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => MyAvailablePhotosScreen(
+                conversationId: widget.conversationId,
+                title: widget.title,
+              ),
+            )),
+          ),
+        ],
+      ),
       body: _buildBody(),
     );
   }
@@ -158,12 +172,17 @@ class _GalleryTile extends StatefulWidget {
     required this.onOpen,
     required this.onUnavailable,
     required this.onRemoved,
+    this.onLongPress,
   });
   final Message message;
   final String otherName;
   final VoidCallback onOpen;
   final VoidCallback onUnavailable;
   final VoidCallback onRemoved;
+
+  /// Se fornito, sostituisce l'azione di default (rimuovi dalla galleria) sul
+  /// long-press: usato dalla sezione "Le mie foto disponibili".
+  final VoidCallback? onLongPress;
 
   @override
   State<_GalleryTile> createState() => _GalleryTileState();
@@ -237,7 +256,7 @@ class _GalleryTileState extends State<_GalleryTile> {
     final mine = widget.message.senderId == AppServices.instance.uid;
     return GestureDetector(
       onTap: widget.onOpen,
-      onLongPress: _remove,
+      onLongPress: widget.onLongPress ?? _remove,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -491,6 +510,209 @@ class _ViewerPageState extends State<_ViewerPage>
       maxScale: 5,
       child: Center(
         child: Image.memory(_bytes!, fit: BoxFit.contain, gaplessPlayback: true),
+      ),
+    );
+  }
+}
+
+/// Le MIE foto rese disponibili (senza limiti) in questa chat ma che NON sono
+/// più nella mia galleria. Serve a ricordare cosa ho condiviso: la foto resta
+/// accessibile all'altro anche dopo che l'ho tolta dalla mia galleria. Da qui
+/// posso ri-aggiungerla alla mia galleria o toglierla dalla disponibilità.
+class MyAvailablePhotosScreen extends StatefulWidget {
+  const MyAvailablePhotosScreen({
+    super.key,
+    required this.conversationId,
+    required this.title,
+  });
+
+  final String conversationId;
+  final String title;
+
+  @override
+  State<MyAvailablePhotosScreen> createState() =>
+      _MyAvailablePhotosScreenState();
+}
+
+class _MyAvailablePhotosScreenState extends State<MyAvailablePhotosScreen> {
+  List<Message>? _items; // null = in caricamento
+  Object? _error;
+  int _visible = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    SecureScreenGuard.acquire();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    SecureScreenGuard.release();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        _items = null;
+        _error = null;
+      });
+    }
+    try {
+      final items = await AppServices.instance
+          .myAvailablePhotosNotSaved(widget.conversationId);
+      if (mounted) setState(() => _items = items);
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
+  }
+
+  void _hide(String messageId) {
+    if (!mounted || _items == null) return;
+    setState(
+        () => _items = _items!.where((m) => m.id != messageId).toList());
+  }
+
+  void _openViewer(int index) {
+    final items = _items;
+    if (items == null || items.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => GalleryViewerScreen(
+        messages: List<Message>.from(items),
+        initialIndex: index,
+        otherName: widget.title,
+      ),
+    ));
+  }
+
+  Future<void> _actions(Message m) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.bookmark_add_outlined),
+              title: const Text('Aggiungi alla mia galleria'),
+              onTap: () => Navigator.pop(ctx, 'save'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Togli dalla disponibilità'),
+              subtitle: const Text(
+                  'Torna protetta e sparisce dalla galleria dell\'altro. Non '
+                  'viene cancellata.'),
+              onTap: () => Navigator.pop(ctx, 'unoffer'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'save') {
+      try {
+        await AppServices.instance.addToGallery(m.id, widget.conversationId);
+        _hide(m.id); // ora è nella mia galleria → esce da questa sezione
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Aggiunta alla tua galleria.')));
+        }
+      } catch (_) {}
+    } else if (action == 'unoffer') {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Togliere dalla disponibilità?'),
+          content: const Text(
+              'La foto torna protetta (limiti della chat) e sparisce dalla '
+              'galleria dell\'altro. NON viene cancellata.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annulla')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Togli')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      try {
+        await AppServices.instance.unofferPhotoFromGallery(m.id);
+        _hide(m.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Tolta dalla disponibilità (ora protetta).')));
+        }
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Mie foto disponibili · ${widget.title}')),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_error != null) {
+      return ErrorView(message: 'Errore: $_error', onRetry: _load);
+    }
+    final items = _items;
+    if (items == null) return const LoadingView();
+    if (items.isEmpty) {
+      return const EmptyView(
+        icon: Icons.collections_bookmark_outlined,
+        title: 'Niente qui',
+        subtitle:
+            'Le foto che hai reso disponibili e poi tolto dalla tua galleria '
+            'compaiono qui, così ricordi cosa hai condiviso con l\'altro.',
+      );
+    }
+    final count = items.length < _visible ? items.length : _visible;
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(3),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 3,
+                mainAxisSpacing: 3,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => _GalleryTile(
+                  key: ValueKey(items[i].id),
+                  message: items[i],
+                  otherName: widget.title,
+                  onOpen: () => _openViewer(i),
+                  onUnavailable: () => _hide(items[i].id),
+                  onRemoved: _load,
+                  onLongPress: () => _actions(items[i]),
+                ),
+                childCount: count,
+              ),
+            ),
+          ),
+          if (_visible < items.length)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                child: OutlinedButton.icon(
+                  onPressed: () => setState(() => _visible += 5),
+                  icon: const Icon(Icons.expand_more),
+                  label: Text('Carica altro (${items.length - _visible})'),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
