@@ -150,13 +150,20 @@ class _GalleryTileState extends State<_GalleryTile> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // Se i byte sono già in cache (foto vista prima, o dopo uno scroll) li
+    // mostro all'istante: niente spinner, niente ri-download/ri-decifra.
+    final cached = AppServices.instance.cachedPhotoBytes(widget.message.id);
+    if (cached != null) {
+      _bytes = cached;
+    } else {
+      _load();
+    }
   }
 
   Future<void> _load() async {
     try {
       final bytes =
-          await AppServices.instance.openContentBytes(widget.message);
+          await AppServices.instance.openPhotoBytesCached(widget.message);
       if (mounted) setState(() => _bytes = bytes);
     } catch (_) {
       // Non disponibile (es. revocata) → togli dalla vista: niente riquadro rotto.
@@ -209,7 +216,8 @@ class _GalleryTileState extends State<_GalleryTile> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.memory(_bytes!, fit: BoxFit.cover, cacheWidth: 360),
+          Image.memory(_bytes!,
+              fit: BoxFit.cover, cacheWidth: 360, gaplessPlayback: true),
           Positioned(
             left: 0,
             right: 0,
@@ -425,8 +433,15 @@ class _ViewerPageState extends State<_ViewerPage>
   }
 
   Future<void> _load() async {
+    // Byte già in cache (miniatura in galleria) → mostra subito, niente
+    // ri-download/ri-decifra.
+    final cached = AppServices.instance.cachedPhotoBytes(widget.message.id);
+    if (cached != null) {
+      setState(() => _bytes = cached);
+      return;
+    }
     try {
-      final b = await AppServices.instance.openContentBytes(widget.message);
+      final b = await AppServices.instance.openPhotoBytesCached(widget.message);
       if (mounted) setState(() => _bytes = b);
     } catch (_) {
       if (mounted) setState(() => _error = true);

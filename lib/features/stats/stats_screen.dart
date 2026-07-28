@@ -43,7 +43,12 @@ class _StatsData {
 class _StatsScreenState extends State<StatsScreen> {
   late Future<_StatsData> _future;
   StreamSubscription? _sub;
-  final Map<String, Uint8List?> _thumbs = {};
+  Timer? _debounce;
+  // Future memoizzati per id foto: il FutureBuilder della miniatura NON deve
+  // ripartire ad ogni rebuild (era la causa dello sfarfallio — ogni ricarica
+  // creava una nuova Future e tornava lo spinner). Persistono tra le ricariche.
+  final Map<String, Future<Uint8List?>> _thumbs = {};
+  int _visible = 5; // paginazione classifica: quante foto mostrare
 
   @override
   void initState() {
@@ -58,12 +63,19 @@ class _StatsScreenState extends State<StatsScreen> {
   @override
   void dispose() {
     _sub?.cancel();
+    _debounce?.cancel();
     super.dispose();
   }
 
   void _reload() {
     if (!mounted) return;
-    setState(() => _future = _load());
+    // Tanti open_events ravvicinati → una sola ricarica (niente ricarichi a
+    // raffica che rallentano e fanno sfarfallare).
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _future = _load());
+    });
   }
 
   Future<_StatsData> _load() async {
@@ -96,25 +108,29 @@ class _StatsScreenState extends State<StatsScreen> {
       if (byViews != 0) return byViews;
       return b.createdAt.compareTo(a.createdAt);
     });
+    // Solo le foto aperte almeno una volta dal destinatario (le 0 aperture non
+    // vanno in classifica).
+    final ranked =
+        photos.where((m) => (viewsByPhoto[m.id] ?? 0) > 0).toList();
     return _StatsData(
       counts: counts,
-      rankedPhotos: photos,
+      rankedPhotos: ranked,
       viewsByPhoto: viewsByPhoto,
       totalPhotoViews: total,
       deniedPhoto: denied,
     );
   }
 
-  Future<Uint8List?> _thumb(Message m) async {
-    if (_thumbs.containsKey(m.id)) return _thumbs[m.id];
-    try {
-      final b = await AppServices.instance.openContentBytes(m);
-      _thumbs[m.id] = b;
-      return b;
-    } catch (_) {
-      _thumbs[m.id] = null;
-      return null;
-    }
+  // Restituisce SEMPRE la stessa Future per una data foto: il FutureBuilder
+  // mantiene lo stato risolto tra i rebuild (niente spinner ripetuto).
+  Future<Uint8List?> _thumb(Message m) {
+    return _thumbs.putIfAbsent(m.id, () async {
+      try {
+        return await AppServices.instance.openContentBytes(m);
+      } catch (_) {
+        return null;
+      }
+    });
   }
 
   void _openPreview(Message m) {
@@ -174,22 +190,43 @@ class _StatsScreenState extends State<StatsScreen> {
                 const SizedBox(height: 24),
                 _sectionTitle(context, 'Foto più viste'),
                 if (d.rankedPhotos.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 24),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 24),
                     child: EmptyView(
                       icon: Icons.leaderboard_outlined,
-                      title: 'Nessuna foto inviata',
-                      subtitle:
-                          'Quando invii foto, qui vedrai quali sono state '
-                          'aperte di più (con anteprima).',
+                      title: c.sentPhotos == 0
+                          ? 'Nessuna foto inviata'
+                          : 'Ancora nessuna apertura',
+                      subtitle: c.sentPhotos == 0
+                          ? 'Quando invii foto, qui vedrai quali sono state '
+                              'aperte di più (con anteprima).'
+                          : 'Le tue foto non sono ancora state aperte dal '
+                              'destinatario. Appena verranno viste, appariranno '
+                              'qui in classifica.',
                     ),
                   )
-                else
-                  ...List.generate(d.rankedPhotos.length, (i) {
-                    final m = d.rankedPhotos[i];
-                    final views = d.viewsByPhoto[m.id] ?? 0;
-                    return _rankRow(context, i + 1, m, views);
-                  }),
+                else ...[
+                  ...List.generate(
+                    d.rankedPhotos.length < _visible
+                        ? d.rankedPhotos.length
+                        : _visible,
+                    (i) {
+                      final m = d.rankedPhotos[i];
+                      final views = d.viewsByPhoto[m.id] ?? 0;
+                      return _rankRow(context, i + 1, m, views);
+                    },
+                  ),
+                  if (d.rankedPhotos.length > _visible)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: OutlinedButton.icon(
+                        onPressed: () => setState(() => _visible += 5),
+                        icon: const Icon(Icons.expand_more),
+                        label: Text(
+                            'Carica altro (${d.rankedPhotos.length - _visible})'),
+                      ),
+                    ),
+                ],
               ],
             );
           },

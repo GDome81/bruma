@@ -82,6 +82,11 @@ class AppServices {
   /// Cache in RAM dei testi ricevuti NON protetti (decifrati una sola volta).
   final Map<String, String> _decryptedText = {};
 
+  /// Cache in RAM (MAI su disco) dei byte in chiaro di foto già aperte: evita
+  /// di ri-scaricare e ri-decifrare la stessa foto a ogni rebuild (galleria che
+  /// sfarfalla) e di consumare aperture. Invalidata su revoca/rimozione/uscita.
+  final Map<String, Uint8List> _openedPhotoCache = {};
+
   /// Incrementa a ogni evento di apertura ricevuto via Realtime: le ricevute
   /// di lettura (doppia spunta) vi si agganciano per aggiornarsi dal vivo.
   final ValueNotifier<int> openEventsTick = ValueNotifier<int>(0);
@@ -169,7 +174,10 @@ class AppServices {
       return;
     }
     _setIdentity(await keyStore.load(currentUid));
-    myProfile = await profiles.getMyProfile();
+    // Timeout: se il server è lento, IdentityGate mostra un errore con
+    // "Riprova" invece di restare all'infinito su "Carico l'identità…".
+    myProfile =
+        await profiles.getMyProfile().timeout(const Duration(seconds: 20));
   }
 
   /// Onboarding: genera la coppia di chiavi, salva la privata sul dispositivo,
@@ -279,6 +287,21 @@ class AppServices {
     }
   }
 
+  /// Byte in chiaro di una foto già aperti in questa sessione, se presenti in
+  /// cache. Permette a miniatura e visualizzatore di mostrarli all'istante.
+  Uint8List? cachedPhotoBytes(String messageId) => _openedPhotoCache[messageId];
+
+  /// Come [openContentBytes] ma memorizza il risultato: chiamate successive per
+  /// la stessa foto tornano dalla cache (niente rete, niente re-decifra). Usare
+  /// solo per foto senza limiti (galleria/eco), non per contenuti a consumo.
+  Future<Uint8List> openPhotoBytesCached(Message m) async {
+    final hit = _openedPhotoCache[m.id];
+    if (hit != null) return hit;
+    final bytes = await openContentBytes(m);
+    _openedPhotoCache[m.id] = bytes;
+    return bytes;
+  }
+
   // --- Richieste di riapertura (il mittente approva) -----------------------
   // Centralizzate qui così sia la conversazione sia la schermata Notifiche
   // possono gestirle allo stesso modo.
@@ -328,6 +351,7 @@ class AppServices {
 
   Future<void> removeFromGallery(String messageId) async {
     await gallery.remove(messageId);
+    _openedPhotoCache.remove(messageId);
     galleryTick.value++;
   }
 
@@ -342,6 +366,8 @@ class AppServices {
   /// Toglie la foto dalla galleria SENZA cancellarla (torna protetta/limitata).
   Future<void> unofferPhotoFromGallery(String messageId) async {
     await messages.unofferFromGallery(messageId);
+    // Torna limitata: i byte in cache non vanno più mostrati liberamente.
+    _openedPhotoCache.remove(messageId);
     galleryTick.value++;
   }
 
@@ -367,6 +393,7 @@ class AppServices {
     await messages.deleteMessage(m);
     _decryptedText.remove(m.id);
     photoEcho.remove(m.id);
+    _openedPhotoCache.remove(m.id);
   }
 
   /// Invalida il testo in cache (es. quando arriva una modifica dal mittente).
@@ -376,6 +403,7 @@ class AppServices {
   /// Storage (il ciphertext non ancora aperto diventa irrecuperabile).
   Future<void> revokeMessage(Message m) async {
     await access.revokeMessage(m.id);
+    _openedPhotoCache.remove(m.id);
     if (m.type == MessageType.photo && m.storagePath != null) {
       try {
         await storage.remove(m.storagePath!);

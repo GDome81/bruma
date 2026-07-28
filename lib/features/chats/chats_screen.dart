@@ -206,7 +206,7 @@ class _ChatsScreenState extends State<ChatsScreen>
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done &&
                 !snap.hasData) {
-              return const LoadingView();
+              return const LoadingView(label: 'Caricamento chat…');
             }
             if (snap.hasError) {
               return ErrorView(

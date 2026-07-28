@@ -39,8 +39,13 @@ class ConversationsRepository {
   }
 
   /// Lista chat pronta per la UI: profilo dell'altro + ultimo messaggio,
-  /// ordinata per attivita' piu' recente.
-  Future<List<ConversationView>> listConversationViews() async {
+  /// ordinata per attivita' piu' recente. Con timeout: se il server è lento la
+  /// schermata chat mostra un errore con "Riprova" invece di girare a vuoto.
+  Future<List<ConversationView>> listConversationViews() {
+    return _listConversationViews().timeout(const Duration(seconds: 25));
+  }
+
+  Future<List<ConversationView>> _listConversationViews() async {
     final convs = await listRaw();
     if (convs.isEmpty) return [];
 
