@@ -108,6 +108,33 @@ class LocalPrefs {
   static Future<void> setTutorialSeen(bool v) async =>
       _p?.setBool('tutorial_seen', v);
 
+  // --- Messaggi preferiti (SOLO locali, nessun contenuto: solo id) ---------
+  // Ogni voce è "conversationId|messageId". Non salviamo testo né nomi:
+  // metadati e nome contatto vengono risolti a schermo dal server.
+  static List<String> get _favRaw =>
+      _p?.getStringList('favorites') ?? const [];
+
+  static bool isFavorite(String messageId) =>
+      _favRaw.any((e) => e.endsWith('|$messageId'));
+
+  /// Coppie (conversationId, messageId), dalla più recente.
+  static List<({String conversationId, String messageId})> favorites() {
+    return _favRaw.reversed.map((e) {
+      final i = e.indexOf('|');
+      return (
+        conversationId: e.substring(0, i),
+        messageId: e.substring(i + 1),
+      );
+    }).toList();
+  }
+
+  static Future<void> setFavorite(
+      String conversationId, String messageId, bool fav) async {
+    final list = _favRaw.toList()..removeWhere((e) => e.endsWith('|$messageId'));
+    if (fav) list.add('$conversationId|$messageId');
+    await _p?.setStringList('favorites', list);
+  }
+
   // --- Ultimo messaggio letto per conversazione ----------------------------
   static DateTime? lastRead(String conversationId) {
     final s = _p?.getString('lastread_$conversationId');

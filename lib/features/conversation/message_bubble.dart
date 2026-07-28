@@ -9,6 +9,7 @@ import '../../shared/emoji_config.dart';
 import '../../shared/linkified_text.dart';
 
 import '../../core/app_services.dart';
+import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
 import '../../core/supabase/key_request_exception.dart';
@@ -262,6 +263,8 @@ Future<void> showMessageActions(
             .showSnackBar(SnackBar(content: Text(m)));
       }
 
+      final isFav = LocalPrefs.isFavorite(message.id);
+
       return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -310,6 +313,20 @@ Future<void> showMessageActions(
               onTap: () {
                 Navigator.pop(ctx);
                 onReply(message);
+              },
+            ),
+            ListTile(
+              leading: Icon(isFav ? Icons.star : Icons.star_border,
+                  color: isFav ? Colors.amber : null),
+              title: Text(
+                  isFav ? 'Rimuovi dai preferiti' : 'Salva nei preferiti'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await LocalPrefs.setFavorite(
+                    message.conversationId, message.id, !isFav);
+                snack(isFav
+                    ? 'Rimosso dai preferiti.'
+                    : 'Salvato nei preferiti.');
               },
             ),
             ListTile(

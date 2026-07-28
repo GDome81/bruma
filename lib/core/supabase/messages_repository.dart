@@ -344,6 +344,18 @@ class MessagesRepository {
     );
   }
 
+  /// Messaggi per una lista di id (metadati; il contenuto resta cifrato).
+  /// Esclude gli eliminati. Usato dai Preferiti.
+  Future<List<Message>> getByIds(List<String> ids) async {
+    if (ids.isEmpty) return [];
+    final rows = await _client
+        .from('messages')
+        .select()
+        .inFilter('id', ids)
+        .filter('deleted_at', 'is', null);
+    return rows.map(Message.fromMap).toList();
+  }
+
   /// Le foto inviate da me nella conversazione (per la classifica statistiche),
   /// più recenti prima. Esclude le eliminate.
   Future<List<Message>> myPhotoMessages(String conversationId) async {

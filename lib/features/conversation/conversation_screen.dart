@@ -27,10 +27,15 @@ class ConversationScreen extends StatefulWidget {
     super.key,
     required this.conversationId,
     required this.other,
+    this.jumpToMessageId,
   });
 
   final String conversationId;
   final Profile other;
+
+  /// Se valorizzato (es. da un Preferito), all'apertura la chat salta a questo
+  /// messaggio e lo evidenzia.
+  final String? jumpToMessageId;
 
   @override
   State<ConversationScreen> createState() => _ConversationScreenState();
@@ -170,7 +175,15 @@ class _ConversationScreenState extends State<ConversationScreen>
       await _reloadReactions();
       if (!mounted) return;
       setState(() => _loadingInitial = false);
-      _scheduleInitialScroll();
+      // Se arrivo da un Preferito, salta subito a quel messaggio; altrimenti
+      // posiziona sul primo non letto / in fondo.
+      if (widget.jumpToMessageId != null) {
+        _didInitialScroll = true; // evita che lo scroll iniziale lo scavalchi
+        WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _goToMessage(widget.jumpToMessageId!));
+      } else {
+        _scheduleInitialScroll();
+      }
       _markRead();
     } catch (e) {
       if (mounted) {
