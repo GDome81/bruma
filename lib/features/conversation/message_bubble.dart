@@ -12,8 +12,10 @@ import '../../core/app_services.dart';
 import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
+import '../../core/secure_store/favorite_notes.dart';
 import '../../core/supabase/key_request_exception.dart';
 import '../../shared/widgets.dart';
+import '../favorites/favorites_screen.dart';
 import '../viewer/viewer_screen.dart';
 
 const _readBlue = Color(0xFF34B7F1);
@@ -30,6 +32,9 @@ class MessageBubble extends StatelessWidget {
     required this.onReply,
     required this.resolveReply,
     required this.onQuoteTap,
+    this.reopenActionable = false,
+    this.onReopenAccept,
+    this.onReopenDeny,
   });
 
   final Message message;
@@ -40,9 +45,40 @@ class MessageBubble extends StatelessWidget {
   final Message? Function(String id) resolveReply;
   final void Function(String id) onQuoteTap;
 
+  /// Solo per i messaggi `reopen_request`: vero se sono il proprietario e la
+  /// richiesta è ancora pendente → mostra Accetta/Rifiuta.
+  final bool reopenActionable;
+  final VoidCallback? onReopenAccept;
+  final VoidCallback? onReopenDeny;
+
   @override
   Widget build(BuildContext context) {
     if (message.isDeleted) return _deletedBubble(context, isMine);
+
+    // Messaggi di sistema (richiesta/riapertura): niente reazioni, resa dedicata.
+    if (message.type == MessageType.reopenRequest) {
+      return _reopenRequestBubble(
+        context,
+        message: message,
+        isMine: isMine,
+        other: other,
+        resolve: resolveReply,
+        onQuoteTap: onQuoteTap,
+        actionable: reopenActionable,
+        onAccept: onReopenAccept,
+        onDeny: onReopenDeny,
+      );
+    }
+    if (message.type == MessageType.reopened) {
+      return _reopenedBubble(
+        context,
+        message: message,
+        isMine: isMine,
+        other: other,
+        resolve: resolveReply,
+        onQuoteTap: onQuoteTap,
+      );
+    }
 
     final Widget inner = message.type == MessageType.text
         ? _TextBubble(
@@ -63,6 +99,106 @@ class MessageBubble extends StatelessWidget {
     if (reactions.isEmpty) return inner;
     return Column(children: [inner, _reactionsRow(context, reactions, isMine)]);
   }
+}
+
+/// Bolla "richiesta di riapertura": cita la foto e, per il proprietario con
+/// richiesta pendente, mostra Accetta/Rifiuta.
+Widget _reopenRequestBubble(
+  BuildContext context, {
+  required Message message,
+  required bool isMine,
+  required Profile other,
+  required Message? Function(String) resolve,
+  required void Function(String) onQuoteTap,
+  required bool actionable,
+  VoidCallback? onAccept,
+  VoidCallback? onDeny,
+}) {
+  final cs = Theme.of(context).colorScheme;
+  return _bubbleShell(
+    context,
+    mine: isMine,
+    child: Column(
+      crossAxisAlignment:
+          isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        if (message.replyTo != null)
+          _quoteHeader(
+              context, message.replyTo!, isMine, other, resolve, onQuoteTap),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_open_outlined, size: 18, color: cs.primary),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                isMine
+                    ? 'Hai chiesto di riaprire questa foto'
+                    : 'Ti ha chiesto di riaprire questa foto',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        if (actionable) ...[
+          const SizedBox(height: 6),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton(
+                onPressed: onDeny,
+                child: const Text('Rifiuta'),
+              ),
+              const SizedBox(width: 4),
+              FilledButton(
+                onPressed: onAccept,
+                child: const Text('Accetta'),
+              ),
+            ],
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+/// Segnaposto "foto riaperta": tocca per saltare alla foto (ora riapribile).
+Widget _reopenedBubble(
+  BuildContext context, {
+  required Message message,
+  required bool isMine,
+  required Profile other,
+  required Message? Function(String) resolve,
+  required void Function(String) onQuoteTap,
+}) {
+  final cs = Theme.of(context).colorScheme;
+  return GestureDetector(
+    onTap: message.replyTo == null ? null : () => onQuoteTap(message.replyTo!),
+    child: _bubbleShell(
+      context,
+      mine: isMine,
+      child: Column(
+        crossAxisAlignment:
+            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (message.replyTo != null)
+            _quoteHeader(
+                context, message.replyTo!, isMine, other, resolve, onQuoteTap),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_open, size: 18, color: cs.primary),
+              const SizedBox(width: 6),
+              const Flexible(
+                child: Text('Foto riaperta — tocca per vederla',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Blocco citazione IN TESTA alla bolla (stile WhatsApp): barra colorata a
@@ -322,11 +458,21 @@ Future<void> showMessageActions(
                   isFav ? 'Rimuovi dai preferiti' : 'Salva nei preferiti'),
               onTap: () async {
                 Navigator.pop(ctx);
-                await AppServices.instance
-                    .setFavorite(message.conversationId, message.id, !isFav);
-                snack(isFav
-                    ? 'Rimosso dai preferiti.'
-                    : 'Salvato nei preferiti.');
+                if (isFav) {
+                  await AppServices.instance
+                      .setFavorite(message.conversationId, message.id, false);
+                  await FavoriteNotes.set(message.id, null);
+                  snack('Rimosso dai preferiti.');
+                } else {
+                  await AppServices.instance
+                      .setFavorite(message.conversationId, message.id, true);
+                  snack('Salvato nei preferiti.');
+                  // Proponi una nota promemoria (facoltativa), utile per i
+                  // contenuti protetti che non si potranno rivedere.
+                  if (context.mounted) {
+                    await editFavoriteNote(context, message.id);
+                  }
+                }
               },
             ),
             ListTile(
@@ -883,8 +1029,11 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
   Future<void> _requestAgain() async {
     setState(() => _requested = true);
     try {
-      await AppServices.instance.requests.createRequest(
-        messageId: widget.message.id,
+      // Registra la richiesta (Notifiche/badge) E la mostra come messaggio in
+      // chat, così il mittente la vede nel flusso della conversazione.
+      await AppServices.instance.requestReopen(
+        photoMessageId: widget.message.id,
+        conversationId: widget.message.conversationId,
         ownerId: widget.message.senderId,
       );
       if (mounted) {

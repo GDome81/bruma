@@ -608,30 +608,6 @@ class _ConversationScreenState extends State<ConversationScreen>
     return null;
   }
 
-  Future<void> _renew(ContentRequest req) async {
-    try {
-      await AppServices.instance.renewRequest(req);
-      _snack('Limiti rinnovati.');
-    } catch (e) {
-      _snack('Rinnovo non riuscito: $e');
-    }
-  }
-
-  Future<void> _resend(ContentRequest req) async {
-    try {
-      await AppServices.instance.resendRequest(req);
-      _snack('Contenuto reinviato.');
-    } catch (e) {
-      _snack('Reinvio non riuscito: $e');
-    }
-  }
-
-  Future<void> _deny(ContentRequest req) async {
-    try {
-      await AppServices.instance.denyRequest(req);
-    } catch (_) {}
-  }
-
   /// Porta la vista sul messaggio a cui si riferisce la richiesta.
   Future<void> _goToMessage(String messageId) async {
     // Carica pagine più vecchie finché il messaggio non è nella lista (max 10).
@@ -665,6 +641,35 @@ class _ConversationScreenState extends State<ConversationScreen>
         setState(() => _highlightId = null);
       }
     });
+  }
+
+  ContentRequest? _pendingRequestFor(Message reopenMsg) {
+    for (final r in _incoming) {
+      if (r.messageId == reopenMsg.replyTo &&
+          r.requesterId == reopenMsg.senderId) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _acceptReopen(Message reopenMsg) async {
+    final req = _pendingRequestFor(reopenMsg);
+    if (req == null) return; // già gestita
+    try {
+      // Rinnova la STESSA foto + inserisce il segnaposto "riaperta" in fondo.
+      await AppServices.instance.acceptReopen(req, widget.conversationId);
+    } catch (e) {
+      if (mounted) _snack('Errore: $e');
+    }
+  }
+
+  Future<void> _denyReopen(Message reopenMsg) async {
+    final req = _pendingRequestFor(reopenMsg);
+    if (req == null) return;
+    try {
+      await AppServices.instance.denyRequest(req);
+    } catch (_) {}
   }
 
   Future<void> _openSettings() async {
@@ -795,7 +800,8 @@ class _ConversationScreenState extends State<ConversationScreen>
           : Column(
               children: [
                 if (_conversation != null) _protectionBanner(_conversation!),
-                if (_incoming.isNotEmpty) _requestBanner(_incoming.first),
+                // Le richieste di riapertura ora appaiono come messaggi in chat
+                // (bolla "reopen_request"), non più come banner in cima.
                 Expanded(child: _messageList(me, firstUnread)),
                 _inputBar(),
               ],
@@ -825,6 +831,12 @@ class _ConversationScreenState extends State<ConversationScreen>
         final ai = _messages.length - 1 - i; // indice crescente reale
         final m = _messages[ai];
         final cs = Theme.of(context).colorScheme;
+        final isSystem = m.type == MessageType.reopenRequest ||
+            m.type == MessageType.reopened;
+        // Proprietario + richiesta ancora pendente → mostra Accetta/Rifiuta.
+        final reopenActionable = m.type == MessageType.reopenRequest &&
+            m.senderId != me &&
+            _incoming.any((r) => r.messageId == m.replyTo);
         final bubble = MessageBubble(
           key: ValueKey(m.id),
           message: m,
@@ -834,26 +846,31 @@ class _ConversationScreenState extends State<ConversationScreen>
           onReply: (msg) => setState(() => _replyingTo = msg),
           resolveReply: _resolveMessage,
           onQuoteTap: _goToMessage,
+          reopenActionable: reopenActionable,
+          onReopenAccept: () => _acceptReopen(m),
+          onReopenDeny: () => _denyReopen(m),
         );
-        // Swipe da sinistra → rispondi (come WhatsApp): non elimina, torna
-        // indietro e imposta la citazione.
-        Widget item = Dismissible(
-          key: ValueKey('sw_${m.id}'),
-          direction: DismissDirection.startToEnd,
-          dismissThresholds: const {DismissDirection.startToEnd: 0.28},
-          confirmDismiss: (_) async {
-            setState(() => _replyingTo = m);
-            return false;
-          },
-          background: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Icon(Icons.reply, color: cs.primary),
-            ),
-          ),
-          child: bubble,
-        );
+        // Swipe da sinistra → rispondi (come WhatsApp). Non per i messaggi di
+        // sistema (richieste/riaperture): non si citano.
+        Widget item = isSystem
+            ? bubble
+            : Dismissible(
+                key: ValueKey('sw_${m.id}'),
+                direction: DismissDirection.startToEnd,
+                dismissThresholds: const {DismissDirection.startToEnd: 0.28},
+                confirmDismiss: (_) async {
+                  setState(() => _replyingTo = m);
+                  return false;
+                },
+                background: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Icon(Icons.reply, color: cs.primary),
+                  ),
+                ),
+                child: bubble,
+              );
         // Evidenziazione dopo il tap su una citazione.
         item = AnimatedContainer(
           duration: const Duration(milliseconds: 300),
@@ -884,41 +901,6 @@ class _ConversationScreenState extends State<ConversationScreen>
             ),
           ),
       ],
-    );
-  }
-
-  Widget _requestBanner(ContentRequest req) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.tertiaryContainer,
-      child: InkWell(
-        onTap: () => _goToMessage(req.messageId),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-          child: Row(
-            children: [
-              Icon(Icons.help_outline, color: cs.onTertiaryContainer, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${widget.other.displayName} ha chiesto di riaprire un contenuto. '
-                  'Tocca per vederlo.',
-                  style: TextStyle(color: cs.onTertiaryContainer, fontSize: 13),
-                ),
-              ),
-              TextButton(
-                  onPressed: () => _renew(req), child: const Text('Rinnova')),
-              TextButton(
-                  onPressed: () => _resend(req), child: const Text('Reinvia')),
-              IconButton(
-                tooltip: 'Ignora',
-                onPressed: () => _deny(req),
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

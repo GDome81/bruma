@@ -1,13 +1,39 @@
 /// Modelli dati (mappano le tabelle Postgres / risultati RPC).
 library;
 
-enum MessageType { text, photo }
+enum MessageType {
+  text,
+  photo,
+  // Messaggi di sistema senza contenuto (citano una foto via reply_to):
+  reopenRequest, // richiesta di riapertura
+  reopened, // segnaposto "foto riaperta"
+}
 
-MessageType messageTypeFromString(String s) =>
-    s == 'photo' ? MessageType.photo : MessageType.text;
+MessageType messageTypeFromString(String s) {
+  switch (s) {
+    case 'photo':
+      return MessageType.photo;
+    case 'reopen_request':
+      return MessageType.reopenRequest;
+    case 'reopened':
+      return MessageType.reopened;
+    default:
+      return MessageType.text;
+  }
+}
 
-String messageTypeToString(MessageType t) =>
-    t == MessageType.photo ? 'photo' : 'text';
+String messageTypeToString(MessageType t) {
+  switch (t) {
+    case MessageType.photo:
+      return 'photo';
+    case MessageType.reopenRequest:
+      return 'reopen_request';
+    case MessageType.reopened:
+      return 'reopened';
+    case MessageType.text:
+      return 'text';
+  }
+}
 
 enum OpenOutcome { granted, deniedRevoked, deniedExpired, deniedLimit, unknown }
 

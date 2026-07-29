@@ -319,6 +319,29 @@ class AppServices {
     await requests.resolve(req.id, 'denied');
   }
 
+  /// Chiede la riapertura di una foto: registra la richiesta (per Notifiche/
+  /// badge cross-chat) E inserisce un messaggio di sistema in chat, così
+  /// entrambi la vedono nel flusso della conversazione.
+  Future<void> requestReopen({
+    required String photoMessageId,
+    required String conversationId,
+    required String ownerId,
+  }) async {
+    await requests.createRequest(messageId: photoMessageId, ownerId: ownerId);
+    await messages.sendReopenRequest(
+        conversationId: conversationId, photoMessageId: photoMessageId);
+  }
+
+  /// Accetta una richiesta: rinnova la STESSA foto (nessun reinvio), risolve la
+  /// richiesta e inserisce in fondo alla chat il segnaposto "foto riaperta".
+  Future<void> acceptReopen(
+      ContentRequest req, String conversationId) async {
+    await requests.renew(req.messageId);
+    await requests.resolve(req.id, 'renewed');
+    await messages.sendReopenedMarker(
+        conversationId: conversationId, photoMessageId: req.messageId);
+  }
+
   /// Reinvia il contenuto al richiedente: riapre la PROPRIA copia e la rimanda.
   Future<void> resendRequest(ContentRequest req) async {
     final m = await messages.getMessage(req.messageId);

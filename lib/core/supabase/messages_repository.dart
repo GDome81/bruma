@@ -40,7 +40,9 @@ class MessagesRepository {
         .select('id')
         .eq('conversation_id', conversationId)
         .neq('sender_id', _uid)
-        .filter('deleted_at', 'is', null);
+        .filter('deleted_at', 'is', null)
+        // I messaggi di sistema (richieste/riaperture) non contano come non letti.
+        .not('type', 'in', '(reopen_request,reopened)');
     if (since != null) {
       q = q.gt('created_at', since.toUtc().toIso8601String());
     }
@@ -53,10 +55,41 @@ class MessagesRepository {
         .from('messages')
         .select()
         .eq('conversation_id', conversationId)
+        // L'anteprima nella lista chat ignora i messaggi di sistema.
+        .not('type', 'in', '(reopen_request,reopened)')
         .order('created_at', ascending: false)
         .limit(1)
         .maybeSingle();
     return row == null ? null : Message.fromMap(row);
+  }
+
+  /// Messaggio di sistema "richiesta di riapertura" (cita la foto via
+  /// reply_to). Nessun contenuto: né ciphertext né blob, nessun message_access.
+  Future<Message> sendReopenRequest({
+    required String conversationId,
+    required String photoMessageId,
+  }) async {
+    final row = await _client.from('messages').insert({
+      'conversation_id': conversationId,
+      'sender_id': _uid,
+      'type': 'reopen_request',
+      'reply_to': photoMessageId,
+    }).select().single();
+    return Message.fromMap(row);
+  }
+
+  /// Segnaposto "foto riaperta" inserito in fondo alla chat all'accettazione.
+  Future<Message> sendReopenedMarker({
+    required String conversationId,
+    required String photoMessageId,
+  }) async {
+    final row = await _client.from('messages').insert({
+      'conversation_id': conversationId,
+      'sender_id': _uid,
+      'type': 'reopened',
+      'reply_to': photoMessageId,
+    }).select().single();
+    return Message.fromMap(row);
   }
 
   Future<Message> sendText({
@@ -323,7 +356,9 @@ class MessagesRepository {
         .from('messages')
         .select('sender_id,type')
         .eq('conversation_id', conversationId)
-        .filter('deleted_at', 'is', null);
+        .filter('deleted_at', 'is', null)
+        // Escludi i messaggi di sistema dai conteggi.
+        .not('type', 'in', '(reopen_request,reopened)');
     int sent = 0, received = 0, sentPhotos = 0, receivedPhotos = 0;
     for (final r in rows) {
       final mine = r['sender_id'] == _uid;
