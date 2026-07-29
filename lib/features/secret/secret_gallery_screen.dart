@@ -21,11 +21,11 @@ class SecretGalleryScreen extends StatefulWidget {
   const SecretGalleryScreen({
     super.key,
     required this.conversationId,
-    required this.title,
+    required this.other,
   });
 
   final String conversationId;
-  final String title;
+  final Profile other;
 
   @override
   State<SecretGalleryScreen> createState() => _SecretGalleryScreenState();
@@ -58,11 +58,45 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
 
   void _reload() => setState(() => _future = _load());
 
+  Future<void> _resend(Message m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reinvia nella chat?'),
+        content: const Text(
+            'La foto verrà inviata di nuovo come nuovo messaggio, con le regole '
+            'di protezione ATTUALI della chat (numero aperture e scadenza).'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reinvia')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await AppServices.instance
+          .resendPhotoToChat(message: m, recipient: widget.other);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Foto reinviata nella chat.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Reinvio non riuscito: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Segreti · ${widget.title}'),
+        title: Text('Segreti · ${widget.other.displayName}'),
         actions: [
           IconButton(
             tooltip: _revealed ? 'Nascondi' : 'Scopri',
@@ -105,6 +139,7 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
               key: ValueKey(items[i].id),
               message: items[i],
               revealed: _revealed,
+              onResend: () => _resend(items[i]),
             ),
           );
         },
@@ -118,10 +153,12 @@ class _SecretTile extends StatefulWidget {
     super.key,
     required this.message,
     required this.revealed,
+    required this.onResend,
   });
 
   final Message message;
   final bool revealed;
+  final VoidCallback onResend;
 
   @override
   State<_SecretTile> createState() => _SecretTileState();
@@ -167,6 +204,7 @@ class _SecretTileState extends State<_SecretTile> {
     final showImage = widget.revealed && _bytes != null;
     return GestureDetector(
       onTap: showImage ? _open : null,
+      onLongPress: widget.onResend, // tieni premuto → reinvia nella chat
       child: showImage
           ? WatermarkOverlay(
               dense: true,

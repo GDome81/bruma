@@ -369,6 +369,25 @@ class AppServices {
     await requests.resolve(req.id, 'resent');
   }
 
+  /// Reinvia una MIA foto nella chat come NUOVO messaggio, con le regole di
+  /// protezione ATTUALI della conversazione (sendPhoto ne fa lo snapshot). La
+  /// riapro dalla mia copia (nessun consumo) e la ri-cifro.
+  Future<Message> resendPhotoToChat({
+    required Message message,
+    required Profile recipient,
+  }) async {
+    final conv = await conversations.getConversation(message.conversationId);
+    final bytes = await openContentBytes(message);
+    final sent = await messages.sendPhoto(
+      conversation: conv,
+      recipient: recipient,
+      senderPublicKey: identity.publicKey,
+      imageBytes: bytes,
+    );
+    photoEcho[sent.id] = bytes;
+    return sent;
+  }
+
   // --- Galleria (wrapper che notificano le bolle via galleryTick) ---------
 
   Future<void> addToGallery(String messageId, String conversationId) async {

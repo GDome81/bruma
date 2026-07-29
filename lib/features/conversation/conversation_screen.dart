@@ -748,7 +748,7 @@ class _ConversationScreenState extends State<ConversationScreen>
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SecretGalleryScreen(
         conversationId: widget.conversationId,
-        title: widget.other.displayName,
+        other: widget.other,
       ),
     ));
   }
