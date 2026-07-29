@@ -147,36 +147,41 @@ Widget _reopenRequestBubble(
             ),
           ],
         ),
-        // Proprietario + richiesta pendente → azioni; altrimenti (richiedente)
-        // mostra l'esito.
+        // Proprietario + richiesta pendente → azioni (Rinnova/Rifiuta).
+        // Altrimenti mostra l'esito (a entrambi i lati).
         if (actionable) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              TextButton(
-                onPressed: onDeny,
-                child: const Text('Rifiuta'),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: onDeny,
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('Rifiuta'),
+                ),
               ),
-              const SizedBox(width: 4),
-              FilledButton.icon(
-                onPressed: onAccept,
-                icon: const Icon(Icons.autorenew, size: 18),
-                label: const Text('Rinnova'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: onAccept,
+                  icon: const Icon(Icons.autorenew, size: 18),
+                  label: const Text('Rinnova'),
+                ),
               ),
             ],
           ),
-        ] else if (isMine && status != null) ...[
+        ] else if (status != null) ...[
           const SizedBox(height: 4),
-          _reopenStatusChip(context, status),
+          _reopenStatusChip(context, status, isMine),
         ],
       ],
     ),
   );
 }
 
-/// Esito di una richiesta di riapertura, mostrato al richiedente.
-Widget _reopenStatusChip(BuildContext context, RequestStatus status) {
+/// Esito di una richiesta di riapertura. `mine` = lo vede il richiedente
+/// (parole diverse dal proprietario).
+Widget _reopenStatusChip(BuildContext context, RequestStatus status, bool mine) {
   final cs = Theme.of(context).colorScheme;
   final IconData icon;
   final String label;
@@ -185,7 +190,7 @@ Widget _reopenStatusChip(BuildContext context, RequestStatus status) {
     case RequestStatus.renewed:
     case RequestStatus.resent:
       icon = Icons.check_circle;
-      label = 'Approvata';
+      label = mine ? 'Approvata' : 'Rinnovata';
       color = Colors.green;
     case RequestStatus.denied:
       icon = Icons.cancel;
@@ -258,49 +263,148 @@ Widget _quoteHeader(
   Message? Function(String) resolve,
   void Function(String) onTap,
 ) {
-  final cs = Theme.of(context).colorScheme;
-  final ref = resolve(replyId);
-  final me = AppServices.instance.uid;
-  final who = ref == null ? '' : (ref.senderId == me ? 'Tu' : other.displayName);
-  final String label;
-  if (ref == null) {
-    label = 'Messaggio';
-  } else if (ref.isDeleted) {
-    label = 'Messaggio eliminato';
-  } else if (ref.type == MessageType.photo) {
-    label = '📷 Foto';
-  } else {
-    label = AppServices.instance.cachedText(ref.id) ?? 'Messaggio';
-  }
-  final onBubble = mine ? cs.onPrimaryContainer : cs.onSurface;
-  return GestureDetector(
-    onTap: () => onTap(replyId),
-    child: Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: onBubble.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: cs.primary, width: 4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(who,
-              style: TextStyle(
-                  color: cs.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 2),
-          Text(label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12.5, color: onBubble)),
-        ],
-      ),
-    ),
+  return _QuoteHeader(
+    replyId: replyId,
+    mine: mine,
+    other: other,
+    resolve: resolve,
+    onTap: onTap,
   );
+}
+
+/// Anteprima del messaggio citato. Se il messaggio non è nella pagina caricata
+/// lo recupera dal server (così non resta "Messaggio" generico); per il testo
+/// (mai protetto) lo decifra al volo per mostrarne l'anteprima; per le foto
+/// mostra una miniatura solo se i byte sono già in cache (niente apertura).
+class _QuoteHeader extends StatefulWidget {
+  const _QuoteHeader({
+    required this.replyId,
+    required this.mine,
+    required this.other,
+    required this.resolve,
+    required this.onTap,
+  });
+
+  final String replyId;
+  final bool mine;
+  final Profile other;
+  final Message? Function(String) resolve;
+  final void Function(String) onTap;
+
+  @override
+  State<_QuoteHeader> createState() => _QuoteHeaderState();
+}
+
+class _QuoteHeaderState extends State<_QuoteHeader> {
+  Message? _ref;
+  String? _text; // anteprima testo decifrata
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  @override
+  void didUpdateWidget(covariant _QuoteHeader old) {
+    super.didUpdateWidget(old);
+    if (old.replyId != widget.replyId) {
+      _ref = null;
+      _text = null;
+      _init();
+    }
+  }
+
+  Future<void> _init() async {
+    var ref = widget.resolve(widget.replyId);
+    ref ??= await AppServices.instance.messages.getMessage(widget.replyId);
+    if (!mounted) return;
+    setState(() => _ref = ref);
+    if (ref == null || ref.isDeleted || ref.type != MessageType.text) return;
+    final cached = AppServices.instance.cachedText(ref.id);
+    if (cached != null) {
+      setState(() => _text = cached);
+      return;
+    }
+    try {
+      // Il testo non è mai protetto: decifrarlo per l'anteprima non consuma
+      // aperture.
+      final bytes = await AppServices.instance.openContentBytes(ref);
+      final t = utf8.decode(bytes);
+      AppServices.instance.cacheText(ref.id, t);
+      if (mounted) setState(() => _text = t);
+    } catch (_) {
+      // resta l'etichetta generica
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final me = AppServices.instance.uid;
+    final ref = _ref;
+    final who =
+        ref == null ? '' : (ref.senderId == me ? 'Tu' : widget.other.displayName);
+    final onBubble = widget.mine ? cs.onPrimaryContainer : cs.onSurface;
+
+    String label;
+    Uint8List? thumb;
+    if (ref == null) {
+      label = 'Messaggio';
+    } else if (ref.isDeleted) {
+      label = 'Messaggio eliminato';
+    } else if (ref.type == MessageType.photo) {
+      label = '📷 Foto';
+      thumb = AppServices.instance.cachedPhotoBytes(ref.id) ??
+          AppServices.instance.photoEcho[ref.id];
+    } else {
+      label = _text ?? AppServices.instance.cachedText(ref.id) ?? 'Messaggio';
+    }
+
+    return GestureDetector(
+      onTap: () => widget.onTap(widget.replyId),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: onBubble.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(8),
+          border: Border(left: BorderSide(color: cs.primary, width: 4)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (thumb != null) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.memory(thumb,
+                    width: 34, height: 34, fit: BoxFit.cover),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(who,
+                      style: TextStyle(
+                          color: cs.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 2),
+                  Text(label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: onBubble)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 Widget _deletedBubble(BuildContext context, bool mine) {
@@ -988,6 +1092,18 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
 
   Future<void> _openSession() async {
     if (_opening) return;
+    // Foto mia già in RAM (eco dell'invio): mostrala senza passare dal server
+    // (evita "contenuto non disponibile" se manca la copia-chiave del mittente).
+    if (widget.isMine) {
+      final echo = AppServices.instance.photoEcho[widget.message.id];
+      if (echo != null) {
+        setState(() {
+          _bytes = echo;
+          _protected = false;
+        });
+        return;
+      }
+    }
     setState(() => _opening = true);
     try {
       final bytes =
@@ -1016,8 +1132,14 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
     } on KeyRequestException catch (e) {
       _opening = false;
       if (mounted) {
+        // Foto mia non trovata sul server = inviata con un'altra identità/
+        // account: messaggio più chiaro del generico "non disponibile".
+        final msg = (e.reason == KeyDenialReason.notFound && widget.isMine)
+            ? 'Questa foto è stata inviata con un\'altra identità: non è '
+                'apribile su questo dispositivo.'
+            : e.userMessage;
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.userMessage)));
+            .showSnackBar(SnackBar(content: Text(msg)));
       }
       _reloadAccess();
     } catch (e) {

@@ -28,10 +28,15 @@ class ConversationScreen extends StatefulWidget {
     super.key,
     required this.conversationId,
     required this.other,
+    this.jumpToMessageId,
   });
 
   final String conversationId;
   final Profile other;
+
+  /// Se valorizzato (es. aperta da Notifiche), all'avvio la chat salta a questo
+  /// messaggio e lo evidenzia.
+  final String? jumpToMessageId;
 
   @override
   State<ConversationScreen> createState() => _ConversationScreenState();
@@ -45,8 +50,9 @@ class _ConversationScreenState extends State<ConversationScreen>
 
   final List<Message> _messages = []; // crescente (vecchi → recenti)
   Map<String, List<Reaction>> _reactions = {};
-  List<ContentRequest> _incoming = [];
-  List<ContentRequest> _myRequests = []; // le MIE richieste (con stato) → esito
+  // Tutte le richieste che mi riguardano (mittente o destinatario), per foto:
+  // l'ultima per ogni messaggio → stato + azioni sulle bolle di riapertura.
+  Map<String, ContentRequest> _reqByMessage = {};
   bool _showProtectionBanner = true;
 
   Conversation? _conversation;
@@ -68,7 +74,6 @@ class _ConversationScreenState extends State<ConversationScreen>
   Timer? _reactDebounce;
   StreamSubscription? _opensSub;
   StreamSubscription? _requestsSub;
-  StreamSubscription? _mineReqSub;
 
   @override
   void initState() {
@@ -93,15 +98,20 @@ class _ConversationScreenState extends State<ConversationScreen>
     _opensSub = AppServices.instance.stats
         .watchMyOpenEvents()
         .listen((_) => AppServices.instance.openEventsTick.value++);
-    _requestsSub = AppServices.instance.requests.watchIncoming().listen((list) {
+    // Tutte le richieste che mi riguardano (mittente o destinatario), con ogni
+    // stato: le bolle di riapertura mostrano azioni (proprietario) o esito
+    // (richiedente) dal vivo.
+    _requestsSub = AppServices.instance.requests.watchAll().listen((list) {
       if (!mounted) return;
-      setState(() => _incoming =
-          list.where((r) => r.requesterId == widget.other.id).toList());
-    });
-    // Lato destinatario: quando il mittente gestisce una mia richiesta,
-    // aggiorna dal vivo lo stato di accesso delle bolle foto.
-    _mineReqSub = AppServices.instance.requests.watchMine().listen((list) {
-      if (mounted) setState(() => _myRequests = list);
+      // Tieni la più recente per ogni messaggio citato.
+      final map = <String, ContentRequest>{};
+      for (final r in list) {
+        final cur = map[r.messageId];
+        if (cur == null || r.createdAt.isAfter(cur.createdAt)) {
+          map[r.messageId] = r;
+        }
+      }
+      setState(() => _reqByMessage = map);
       AppServices.instance.accessTick.value++;
     });
   }
@@ -151,7 +161,6 @@ class _ConversationScreenState extends State<ConversationScreen>
     _highlightTimer?.cancel();
     _opensSub?.cancel();
     _requestsSub?.cancel();
-    _mineReqSub?.cancel();
     final c = AppServices.instance.client;
     if (_msgChannel != null) c.removeChannel(_msgChannel!);
     if (_reactChannel != null) c.removeChannel(_reactChannel!);
@@ -178,7 +187,13 @@ class _ConversationScreenState extends State<ConversationScreen>
       await _reloadReactions();
       if (!mounted) return;
       setState(() => _loadingInitial = false);
-      _scheduleInitialScroll();
+      if (widget.jumpToMessageId != null) {
+        _didInitialScroll = true; // non farlo scavalcare dallo scroll iniziale
+        WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _goToMessage(widget.jumpToMessageId!));
+      } else {
+        _scheduleInitialScroll();
+      }
       _markRead();
     } catch (e) {
       if (mounted) {
@@ -647,12 +662,8 @@ class _ConversationScreenState extends State<ConversationScreen>
   }
 
   ContentRequest? _pendingRequestFor(Message reopenMsg) {
-    for (final r in _incoming) {
-      if (r.messageId == reopenMsg.replyTo &&
-          r.requesterId == reopenMsg.senderId) {
-        return r;
-      }
-    }
+    final r = _reqByMessage[reopenMsg.replyTo];
+    if (r != null && r.status == RequestStatus.pending) return r;
     return null;
   }
 
@@ -837,20 +848,16 @@ class _ConversationScreenState extends State<ConversationScreen>
         final cs = Theme.of(context).colorScheme;
         final isSystem = m.type == MessageType.reopenRequest ||
             m.type == MessageType.reopened;
-        // Proprietario + richiesta ancora pendente → mostra Rinnova/Rifiuta.
+        // Stato della richiesta legata alla foto citata (per entrambi i lati).
+        final req = m.type == MessageType.reopenRequest
+            ? _reqByMessage[m.replyTo]
+            : null;
+        final reopenStatus = req?.status ?? RequestStatus.pending;
+        // Proprietario (il reopen_request l'ha inviato l'altro) + pendente →
+        // mostra Rinnova/Rifiuta.
         final reopenActionable = m.type == MessageType.reopenRequest &&
             m.senderId != me &&
-            _incoming.any((r) => r.messageId == m.replyTo);
-        // Richiedente: esito della MIA richiesta per quella foto (la più recente).
-        RequestStatus? reopenStatus;
-        if (m.type == MessageType.reopenRequest && m.senderId == me) {
-          final mine = _myRequests
-              .where((r) => r.messageId == m.replyTo)
-              .toList()
-            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-          reopenStatus =
-              mine.isEmpty ? RequestStatus.pending : mine.first.status;
-        }
+            reopenStatus == RequestStatus.pending;
         final bubble = MessageBubble(
           key: ValueKey(m.id),
           message: m,

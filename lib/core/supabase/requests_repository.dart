@@ -58,4 +58,16 @@ class RequestsRepository {
             .where((r) => r.requesterId == _uid)
             .toList());
   }
+
+  /// TUTTE le richieste che mi riguardano (come mittente O destinatario), con
+  /// ogni stato. Serve alle bolle in chat per mostrare esito + azioni dal vivo.
+  Stream<List<ContentRequest>> watchAll() {
+    return _client
+        .from('content_requests')
+        .stream(primaryKey: ['id'])
+        .map((rows) => rows
+            .map(ContentRequest.fromMap)
+            .where((r) => r.ownerId == _uid || r.requesterId == _uid)
+            .toList());
+  }
 }
