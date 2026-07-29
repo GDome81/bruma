@@ -55,6 +55,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   bool _sending = false;
   bool _didInitialScroll = false;
   bool _showEmoji = false;
+  bool _showScrollDown = false; // tasto "vai all'ultimo messaggio"
   Message? _replyingTo;
   DateTime? _lastReadAtOpen;
   String? _highlightId; // messaggio evidenziato dopo il tap su una citazione
@@ -258,6 +259,12 @@ class _ConversationScreenState extends State<ConversationScreen>
     // pagina precedente quando ci si avvicina alla cima.
     final maxIndex = positions.map((p) => p.index).reduce(max);
     if (maxIndex >= _messages.length - 4) _loadOlder();
+    // reverse: l'indice 0 è il messaggio più recente (in fondo). Se non è
+    // visibile vuol dire che ho scrollato in alto → mostro il tasto "vai giù".
+    final atBottom = positions.any((p) => p.index == 0);
+    if (atBottom == _showScrollDown) {
+      setState(() => _showScrollDown = !atBottom);
+    }
   }
 
   void _scrollToBottomSoon() {
@@ -808,7 +815,7 @@ class _ConversationScreenState extends State<ConversationScreen>
     }
     // reverse: true → l'indice 0 è in FONDO. Mappo l'indice invertito i sul
     // messaggio in ordine crescente, così il più recente resta in basso.
-    return ScrollablePositionedList.builder(
+    final list = ScrollablePositionedList.builder(
       reverse: true,
       itemScrollController: _itemScroll,
       itemPositionsListener: _positions,
@@ -861,6 +868,22 @@ class _ConversationScreenState extends State<ConversationScreen>
         }
         return item;
       },
+    );
+    return Stack(
+      children: [
+        list,
+        if (_showScrollDown)
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: FloatingActionButton.small(
+              heroTag: 'scrollToLatest',
+              tooltip: 'Vai all\'ultimo messaggio',
+              onPressed: _scrollToBottomSoon,
+              child: const Icon(Icons.keyboard_arrow_down),
+            ),
+          ),
+      ],
     );
   }
 

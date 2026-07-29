@@ -36,18 +36,16 @@ class StatsRepository {
   }
 
   /// Eventi per tutti i messaggi che io ho inviato nella conversazione.
+  ///
+  /// Filtro via INNER JOIN su `messages` (FK message_id → messages.id) invece
+  /// di un enorme `message_id=in.(...)`: in chat lunghe quella lista rendeva
+  /// l'URL troppo lungo → 400 Bad Request. La RLS di open_events limita già ai
+  /// messaggi inviati da me, quindi restano solo i miei.
   Future<List<OpenEvent>> eventsForConversation(String conversationId) async {
-    final myMsgs = await _client
-        .from('messages')
-        .select('id')
-        .eq('conversation_id', conversationId)
-        .eq('sender_id', _uid);
-    final ids = myMsgs.map((r) => r['id'] as String).toList();
-    if (ids.isEmpty) return [];
     final rows = await _client
         .from('open_events')
-        .select()
-        .inFilter('message_id', ids)
+        .select('*, messages!inner(conversation_id)')
+        .eq('messages.conversation_id', conversationId)
         .neq('recipient_id', _uid) // escludi le riletture del mittente stesso
         .order('opened_at', ascending: false);
     return rows.map(OpenEvent.fromMap).toList();
