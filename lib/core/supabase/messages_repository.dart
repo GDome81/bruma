@@ -273,6 +273,35 @@ class MessagesRepository {
     return channel;
   }
 
+  /// Notifica (senza payload) a ogni insert/update/delete di messaggi che mi
+  /// riguardano: la lista chat vi aggancia il ricalcolo dei non letti in
+  /// tempo reale. Canale dedicato (`.channel`) perché più affidabile del
+  /// `.stream()` per gli insert di altri utenti.
+  RealtimeChannel subscribeMyMessages(void Function() onChange) {
+    final channel = _client.channel('mychats:$_uid');
+    channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (_) => onChange(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          callback: (_) => onChange(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'messages',
+          callback: (_) => onChange(),
+        )
+        .subscribe();
+    return channel;
+  }
+
   // --- Modifica / eliminazione --------------------------------------------
 
   Future<void> editText({

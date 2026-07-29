@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_services.dart';
 import '../../core/local_prefs.dart';
@@ -12,7 +13,6 @@ import '../contacts/add_contact_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../conversation/conversation_screen.dart';
 import '../notifications/notifications_screen.dart';
-import '../secret/secret_gallery_screen.dart';
 import '../settings/app_settings_screen.dart';
 import '../tutorial/tutorial_screen.dart';
 
@@ -27,8 +27,9 @@ class ChatsScreen extends StatefulWidget {
 class _ChatsScreenState extends State<ChatsScreen>
     with WidgetsBindingObserver {
   late Future<List<ConversationView>> _future;
-  StreamSubscription? _sub;
+  RealtimeChannel? _msgChannel;
   StreamSubscription? _reqSub;
+  Timer? _reloadDebounce;
   int _pendingRequests = 0;
 
   @override
@@ -36,10 +37,11 @@ class _ChatsScreenState extends State<ChatsScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _future = AppServices.instance.conversations.listConversationViews();
-    // Aggiorna la lista quando arrivano/partono messaggi.
-    _sub = AppServices.instance.conversations
-        .watchAllMyMessages()
-        .listen((_) => _reload());
+    // Aggiorna i non letti in tempo reale a ogni messaggio (canale affidabile,
+    // non lo stream): ricarico con un piccolo debounce per non ripetere la
+    // fan-out di listConversationViews a raffica.
+    _msgChannel =
+        AppServices.instance.messages.subscribeMyMessages(_reloadSoon);
     // Richieste in arrivo (riapri contenuto) → badge sulla campanella.
     _reqSub = AppServices.instance.requests.watchIncoming().listen((list) {
       if (mounted) setState(() => _pendingRequests = list.length);
@@ -73,9 +75,18 @@ class _ChatsScreenState extends State<ChatsScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _sub?.cancel();
+    if (_msgChannel != null) {
+      AppServices.instance.client.removeChannel(_msgChannel!);
+    }
+    _reloadDebounce?.cancel();
     _reqSub?.cancel();
     super.dispose();
+  }
+
+  // Coalesce più eventi ravvicinati in un solo ricalcolo.
+  void _reloadSoon() {
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 300), _reload);
   }
 
   void _reload() {
@@ -154,10 +165,6 @@ class _ChatsScreenState extends State<ChatsScreen>
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'signout') AppServices.instance.signOut();
-              if (v == 'secret') {
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const SecretGalleryScreen()));
-              }
               if (v == 'security') {
                 Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const AppSettingsScreen()));
@@ -185,8 +192,6 @@ class _ChatsScreenState extends State<ChatsScreen>
                 ),
               ),
               const PopupMenuDivider(),
-              const PopupMenuItem(
-                  value: 'secret', child: Text('Galleria segreta')),
               const PopupMenuItem(
                   value: 'security', child: Text('Sicurezza')),
               const PopupMenuItem(

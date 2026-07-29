@@ -555,7 +555,6 @@ Future<void> showMessageActions(
       }
 
       final isFav = LocalPrefs.isFavorite(message.id);
-      final isSecret = LocalPrefs.isSecret(message.id);
 
       return SafeArea(
         child: Column(
@@ -631,21 +630,6 @@ Future<void> showMessageActions(
                 }
               },
             ),
-            if (!isText)
-              ListTile(
-                leading: Icon(isSecret ? Icons.lock : Icons.lock_outline),
-                title: Text(isSecret
-                    ? 'Rimuovi dai segreti'
-                    : 'Aggiungi ai segreti'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await LocalPrefs.setSecret(
-                      message.conversationId, message.id, !isSecret);
-                  snack(isSecret
-                      ? 'Rimosso dai segreti.'
-                      : 'Aggiunto alla galleria segreta.');
-                },
-              ),
             ListTile(
               leading: const Icon(Icons.mood_bad),
               title: const Text('Togli la mia reaction'),

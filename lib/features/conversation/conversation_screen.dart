@@ -17,6 +17,7 @@ import '../../shared/widgets.dart';
 import '../camera/camera_screen.dart';
 import '../favorites/favorites_screen.dart';
 import '../gallery/gallery_screen.dart';
+import '../secret/secret_gallery_screen.dart';
 import '../settings/chat_settings_screen.dart';
 import '../stats/stats_screen.dart';
 import 'message_bubble.dart';
@@ -64,6 +65,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   bool _didInitialScroll = false;
   bool _showEmoji = false;
   bool _showScrollDown = false; // tasto "vai all'ultimo messaggio"
+  int _newCount = 0; // messaggi arrivati mentre sono scrollato in alto
   Message? _replyingTo;
   DateTime? _lastReadAtOpen;
   String? _highlightId; // messaggio evidenziato dopo il tap su una citazione
@@ -251,10 +253,23 @@ class _ConversationScreenState extends State<ConversationScreen>
     if (!mounted) return;
     if (m.conversationId != widget.conversationId) return;
     if (_messages.any((x) => x.id == m.id)) return;
+    final mine = m.senderId == AppServices.instance.uid;
+    final atBottom = _isAtBottom();
     setState(() => _messages.add(m));
     _markRead();
-    _scrollToBottomSoon(); // su invio E ricezione: vai in fondo
+    if (mine || atBottom) {
+      _scrollToBottomSoon(); // seguo se ho inviato io o ero già in fondo
+    } else if (!_isSystem(m)) {
+      // Sono scrollato in alto: non trascinare, segnala col badge sul tasto.
+      setState(() => _newCount++);
+    }
   }
+
+  bool _isSystem(Message m) =>
+      m.type == MessageType.reopenRequest || m.type == MessageType.reopened;
+
+  bool _isAtBottom() =>
+      _positions.itemPositions.value.any((p) => p.index == 0);
 
   void _onUpdate(Message m) {
     if (!mounted) return;
@@ -283,6 +298,8 @@ class _ConversationScreenState extends State<ConversationScreen>
     if (atBottom == _showScrollDown) {
       setState(() => _showScrollDown = !atBottom);
     }
+    // Tornato in fondo → azzero il contatore dei nuovi messaggi.
+    if (atBottom && _newCount != 0) setState(() => _newCount = 0);
   }
 
   void _scrollToBottomSoon() {
@@ -727,6 +744,15 @@ class _ConversationScreenState extends State<ConversationScreen>
     ));
   }
 
+  void _openSecret() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SecretGalleryScreen(
+        conversationId: widget.conversationId,
+        title: widget.other.displayName,
+      ),
+    ));
+  }
+
   Future<void> _toggleMute() async {
     final muted = LocalPrefs.isChatMuted(widget.conversationId);
     await AppServices.instance.setChatMuted(widget.conversationId, !muted);
@@ -784,6 +810,8 @@ class _ConversationScreenState extends State<ConversationScreen>
                   _openStats();
                 case 'favorites':
                   _openFavorites();
+                case 'secret':
+                  _openSecret();
                 case 'protection':
                   _openSettings();
                 case 'mute':
@@ -796,6 +824,7 @@ class _ConversationScreenState extends State<ConversationScreen>
                 _menuItem('gallery', Icons.collections_outlined, 'Galleria'),
                 _menuItem('stats', Icons.bar_chart, 'Statistiche'),
                 _menuItem('favorites', Icons.star_border, 'Preferiti'),
+                _menuItem('secret', Icons.lock_outline, 'Galleria segreta'),
                 _menuItem(
                     'protection', Icons.shield_outlined, 'Protezione'),
                 const PopupMenuDivider(),
@@ -915,11 +944,20 @@ class _ConversationScreenState extends State<ConversationScreen>
           Positioned(
             right: 12,
             bottom: 12,
-            child: FloatingActionButton.small(
-              heroTag: 'scrollToLatest',
-              tooltip: 'Vai all\'ultimo messaggio',
-              onPressed: _scrollToBottomSoon,
-              child: const Icon(Icons.keyboard_arrow_down),
+            child: Badge(
+              isLabelVisible: _newCount > 0,
+              label: Text('$_newCount'),
+              child: FloatingActionButton.small(
+                heroTag: 'scrollToLatest',
+                tooltip: _newCount > 0
+                    ? '$_newCount nuovi messaggi'
+                    : 'Vai all\'ultimo messaggio',
+                onPressed: () {
+                  _scrollToBottomSoon();
+                  if (_newCount != 0) setState(() => _newCount = 0);
+                },
+                child: const Icon(Icons.keyboard_arrow_down),
+              ),
             ),
           ),
       ],

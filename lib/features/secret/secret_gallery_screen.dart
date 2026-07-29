@@ -3,21 +3,29 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/app_services.dart';
-import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
 import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
 import '../viewer/viewer_screen.dart';
 
-/// Galleria "segreta": raccolta personale (SOLO locale su questo dispositivo)
-/// dei contenuti che l'utente ha marcato come segreti, di tutte le chat.
+/// Galleria "segreta" di UNA chat: raccoglie AUTOMATICAMENTE tutte le foto che
+/// HO INVIATO in questa conversazione e che sono ancora "sotto controllo"
+/// (protette/limitate, cioè non rese senza limiti in galleria). Serve al
+/// mittente per rivedere tutto ciò che ha condiviso.
+///
 /// Di default le anteprime sono NASCOSTE (placeholder + data); un tasto
-/// "scopri/nascondi" le rivela. Rivelare NON consuma aperture: si mostrano solo
-/// le foto proprie o senza limiti (o già in cache); le altre restano un
-/// lucchetto (apribili dalla chat).
+/// "scopri/nascondi" le rivela. Sono foto mie → si decifrano dalla mia copia
+/// senza consumare aperture.
 class SecretGalleryScreen extends StatefulWidget {
-  const SecretGalleryScreen({super.key});
+  const SecretGalleryScreen({
+    super.key,
+    required this.conversationId,
+    required this.title,
+  });
+
+  final String conversationId;
+  final String title;
 
   @override
   State<SecretGalleryScreen> createState() => _SecretGalleryScreenState();
@@ -41,27 +49,20 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
   }
 
   Future<List<Message>> _load() async {
-    final ids = LocalPrefs.secrets().map((s) => s.messageId).toList();
-    if (ids.isEmpty) return [];
-    final msgs = await AppServices.instance.messages.getByIds(ids);
-    final photos =
-        msgs.where((m) => m.type == MessageType.photo).toList();
-    photos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return photos;
+    final mine = await AppServices.instance.messages
+        .myPhotoMessages(widget.conversationId); // già dal più recente
+    // Solo quelle ancora sotto controllo di visualizzazioni: le foto rese
+    // "senza limiti" in galleria stanno nella galleria normale.
+    return mine.where((m) => !m.galleryOffered).toList();
   }
 
   void _reload() => setState(() => _future = _load());
-
-  Future<void> _remove(Message m) async {
-    await LocalPrefs.setSecret(m.conversationId, m.id, false);
-    _reload();
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Galleria segreta'),
+        title: Text('Segreti · ${widget.title}'),
         actions: [
           IconButton(
             tooltip: _revealed ? 'Nascondi' : 'Scopri',
@@ -87,9 +88,9 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
               icon: Icons.lock_outline,
               title: 'Niente di segreto',
               subtitle:
-                  'Tieni premuto una foto e scegli "Aggiungi ai segreti". '
-                  'Qui restano nascoste dietro placeholder finché non tocchi '
-                  '"scopri".',
+                  'Qui appaiono automaticamente le foto che hai inviato in '
+                  'questa chat e che sono ancora sotto controllo di '
+                  'visualizzazioni. Tocca "scopri" per vederle.',
             );
           }
           return GridView.builder(
@@ -104,7 +105,6 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
               key: ValueKey(items[i].id),
               message: items[i],
               revealed: _revealed,
-              onRemove: () => _remove(items[i]),
             ),
           );
         },
@@ -118,12 +118,10 @@ class _SecretTile extends StatefulWidget {
     super.key,
     required this.message,
     required this.revealed,
-    required this.onRemove,
   });
 
   final Message message;
   final bool revealed;
-  final VoidCallback onRemove;
 
   @override
   State<_SecretTile> createState() => _SecretTileState();
@@ -132,30 +130,22 @@ class _SecretTile extends StatefulWidget {
 class _SecretTileState extends State<_SecretTile> {
   Uint8List? _bytes;
 
-  // Anteprima mostrabile senza consumare aperture: foto mia, oppure senza
-  // limiti (offerta), oppure già decifrata in cache.
-  bool get _previewable {
-    final m = widget.message;
-    return m.senderId == AppServices.instance.uid ||
-        m.galleryOffered ||
-        AppServices.instance.cachedPhotoBytes(m.id) != null;
-  }
-
   @override
   void initState() {
     super.initState();
-    if (widget.revealed) _maybeLoad();
+    if (widget.revealed) _load();
   }
 
   @override
   void didUpdateWidget(covariant _SecretTile old) {
     super.didUpdateWidget(old);
-    if (widget.revealed && !old.revealed) _maybeLoad();
+    if (widget.revealed && !old.revealed) _load();
   }
 
-  Future<void> _maybeLoad() async {
-    if (_bytes != null || !_previewable) return;
+  Future<void> _load() async {
+    if (_bytes != null) return;
     try {
+      // Foto mia: si decifra dalla mia copia (protezione off) senza consumare.
       final b = await AppServices.instance.openPhotoBytesCached(widget.message);
       if (mounted) setState(() => _bytes = b);
     } catch (_) {
@@ -174,10 +164,9 @@ class _SecretTileState extends State<_SecretTile> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final showImage = widget.revealed && _previewable && _bytes != null;
+    final showImage = widget.revealed && _bytes != null;
     return GestureDetector(
       onTap: showImage ? _open : null,
-      onLongPress: widget.onRemove,
       child: showImage
           ? WatermarkOverlay(
               dense: true,
@@ -190,16 +179,14 @@ class _SecretTileState extends State<_SecretTile> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                      widget.revealed && !_previewable
-                          ? Icons.lock_outline
-                          : Icons.lock,
+                      widget.revealed ? Icons.hourglass_empty : Icons.lock,
                       color: cs.onSurfaceVariant,
                       size: 22),
                   const SizedBox(height: 4),
                   Text(
                     formatTimestamp(widget.message.createdAt),
-                    style: TextStyle(
-                        color: cs.onSurfaceVariant, fontSize: 10),
+                    style:
+                        TextStyle(color: cs.onSurfaceVariant, fontSize: 10),
                   ),
                 ],
               ),
