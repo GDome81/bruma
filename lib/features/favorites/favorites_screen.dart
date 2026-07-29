@@ -92,6 +92,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       final note = await FavoriteNotes.get(m.id);
       out.add(_FavItem(m, note));
     }
+    // Ordina per data del messaggio ORIGINALE (più recente prima).
+    out.sort((a, b) => b.message.createdAt.compareTo(a.message.createdAt));
     return out;
   }
 
@@ -193,24 +195,56 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       );
     }
 
-    // Titolo: la nota se c'è (è il promemoria migliore per i contenuti che non
-    // si rivedono), altrimenti l'anteprima testo, altrimenti il tipo.
-    String title;
-    if (item.note != null && item.note!.isNotEmpty) {
-      title = item.note!;
-    } else if (cachedText != null && cachedText.trim().isNotEmpty) {
-      title = cachedText.trim();
-    } else if (isPhoto) {
-      title = 'Foto';
-    } else {
-      title = 'Messaggio di testo';
-    }
+    // Anteprima del messaggio (testo se in cache, altrimenti il tipo).
+    final preview = (cachedText != null && cachedText.trim().isNotEmpty)
+        ? cachedText.trim()
+        : (isPhoto ? 'Foto' : 'Messaggio di testo');
     final author = mine ? 'Tu' : widget.other.displayName;
+    final meta = '$author · ${formatTimestamp(m.createdAt)}';
+    final hasNote = item.note != null && item.note!.isNotEmpty;
+    final cs = Theme.of(context).colorScheme;
+
+    // Con nota: la nota in evidenza (in alto, con icona) + l'anteprima del
+    // messaggio in corsivo sotto, così si vedono entrambe ma distinte.
+    final Widget titleWidget = hasNote
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2, right: 6),
+                child: Icon(Icons.sticky_note_2_outlined,
+                    size: 15, color: cs.primary),
+              ),
+              Expanded(
+                child: Text(item.note!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ],
+          )
+        : Text(preview, maxLines: 2, overflow: TextOverflow.ellipsis);
+
+    final Widget subtitleWidget = hasNote
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurfaceVariant)),
+              Text(meta, style: Theme.of(context).textTheme.labelSmall),
+            ],
+          )
+        : Text(meta);
 
     return ListTile(
+      isThreeLine: hasNote,
       leading: leading,
-      title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
-      subtitle: Text('$author · ${formatTimestamp(m.createdAt)}'),
+      title: titleWidget,
+      subtitle: subtitleWidget,
       onTap: () => _open(m),
       trailing: PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert),

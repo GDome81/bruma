@@ -46,6 +46,8 @@ class _ConversationScreenState extends State<ConversationScreen>
   final List<Message> _messages = []; // crescente (vecchi → recenti)
   Map<String, List<Reaction>> _reactions = {};
   List<ContentRequest> _incoming = [];
+  List<ContentRequest> _myRequests = []; // le MIE richieste (con stato) → esito
+  bool _showProtectionBanner = true;
 
   Conversation? _conversation;
   String? _error;
@@ -98,9 +100,10 @@ class _ConversationScreenState extends State<ConversationScreen>
     });
     // Lato destinatario: quando il mittente gestisce una mia richiesta,
     // aggiorna dal vivo lo stato di accesso delle bolle foto.
-    _mineReqSub = AppServices.instance.requests
-        .watchMine()
-        .listen((_) => AppServices.instance.accessTick.value++);
+    _mineReqSub = AppServices.instance.requests.watchMine().listen((list) {
+      if (mounted) setState(() => _myRequests = list);
+      AppServices.instance.accessTick.value++;
+    });
   }
 
   @override
@@ -799,7 +802,8 @@ class _ConversationScreenState extends State<ConversationScreen>
           ? ErrorView(message: _error!)
           : Column(
               children: [
-                if (_conversation != null) _protectionBanner(_conversation!),
+                if (_conversation != null && _showProtectionBanner)
+                  _protectionBanner(_conversation!),
                 // Le richieste di riapertura ora appaiono come messaggi in chat
                 // (bolla "reopen_request"), non più come banner in cima.
                 Expanded(child: _messageList(me, firstUnread)),
@@ -833,10 +837,20 @@ class _ConversationScreenState extends State<ConversationScreen>
         final cs = Theme.of(context).colorScheme;
         final isSystem = m.type == MessageType.reopenRequest ||
             m.type == MessageType.reopened;
-        // Proprietario + richiesta ancora pendente → mostra Accetta/Rifiuta.
+        // Proprietario + richiesta ancora pendente → mostra Rinnova/Rifiuta.
         final reopenActionable = m.type == MessageType.reopenRequest &&
             m.senderId != me &&
             _incoming.any((r) => r.messageId == m.replyTo);
+        // Richiedente: esito della MIA richiesta per quella foto (la più recente).
+        RequestStatus? reopenStatus;
+        if (m.type == MessageType.reopenRequest && m.senderId == me) {
+          final mine = _myRequests
+              .where((r) => r.messageId == m.replyTo)
+              .toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          reopenStatus =
+              mine.isEmpty ? RequestStatus.pending : mine.first.status;
+        }
         final bubble = MessageBubble(
           key: ValueKey(m.id),
           message: m,
@@ -847,6 +861,7 @@ class _ConversationScreenState extends State<ConversationScreen>
           resolveReply: _resolveMessage,
           onQuoteTap: _goToMessage,
           reopenActionable: reopenActionable,
+          reopenStatus: reopenStatus,
           onReopenAccept: () => _acceptReopen(m),
           onReopenDeny: () => _denyReopen(m),
         );
@@ -941,6 +956,14 @@ class _ConversationScreenState extends State<ConversationScreen>
                   ? 'Foto protette · $opens aperture · $dur'
                   : 'Protezione foto disattivata',
               style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ),
+          InkWell(
+            onTap: () => setState(() => _showProtectionBanner = false),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(Icons.close, size: 16, color: cs.onSurfaceVariant),
             ),
           ),
         ],

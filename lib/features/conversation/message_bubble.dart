@@ -33,6 +33,7 @@ class MessageBubble extends StatelessWidget {
     required this.resolveReply,
     required this.onQuoteTap,
     this.reopenActionable = false,
+    this.reopenStatus,
     this.onReopenAccept,
     this.onReopenDeny,
   });
@@ -46,8 +47,12 @@ class MessageBubble extends StatelessWidget {
   final void Function(String id) onQuoteTap;
 
   /// Solo per i messaggi `reopen_request`: vero se sono il proprietario e la
-  /// richiesta è ancora pendente → mostra Accetta/Rifiuta.
+  /// richiesta è ancora pendente → mostra Rinnova/Rifiuta.
   final bool reopenActionable;
+
+  /// Solo per il richiedente: esito della propria richiesta (in attesa /
+  /// approvata / rifiutata) da mostrare sotto la bolla.
+  final RequestStatus? reopenStatus;
   final VoidCallback? onReopenAccept;
   final VoidCallback? onReopenDeny;
 
@@ -65,6 +70,7 @@ class MessageBubble extends StatelessWidget {
         resolve: resolveReply,
         onQuoteTap: onQuoteTap,
         actionable: reopenActionable,
+        status: reopenStatus,
         onAccept: onReopenAccept,
         onDeny: onReopenDeny,
       );
@@ -111,6 +117,7 @@ Widget _reopenRequestBubble(
   required Message? Function(String) resolve,
   required void Function(String) onQuoteTap,
   required bool actionable,
+  RequestStatus? status,
   VoidCallback? onAccept,
   VoidCallback? onDeny,
 }) {
@@ -140,6 +147,8 @@ Widget _reopenRequestBubble(
             ),
           ],
         ),
+        // Proprietario + richiesta pendente → azioni; altrimenti (richiedente)
+        // mostra l'esito.
         if (actionable) ...[
           const SizedBox(height: 6),
           Row(
@@ -150,15 +159,53 @@ Widget _reopenRequestBubble(
                 child: const Text('Rifiuta'),
               ),
               const SizedBox(width: 4),
-              FilledButton(
+              FilledButton.icon(
                 onPressed: onAccept,
-                child: const Text('Accetta'),
+                icon: const Icon(Icons.autorenew, size: 18),
+                label: const Text('Rinnova'),
               ),
             ],
           ),
+        ] else if (isMine && status != null) ...[
+          const SizedBox(height: 4),
+          _reopenStatusChip(context, status),
         ],
       ],
     ),
+  );
+}
+
+/// Esito di una richiesta di riapertura, mostrato al richiedente.
+Widget _reopenStatusChip(BuildContext context, RequestStatus status) {
+  final cs = Theme.of(context).colorScheme;
+  final IconData icon;
+  final String label;
+  final Color color;
+  switch (status) {
+    case RequestStatus.renewed:
+    case RequestStatus.resent:
+      icon = Icons.check_circle;
+      label = 'Approvata';
+      color = Colors.green;
+    case RequestStatus.denied:
+      icon = Icons.cancel;
+      label = 'Rifiutata';
+      color = cs.error;
+    case RequestStatus.pending:
+    case RequestStatus.unknown:
+      icon = Icons.schedule;
+      label = 'In attesa';
+      color = cs.onSurfaceVariant;
+  }
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 14, color: color),
+      const SizedBox(width: 4),
+      Text(label,
+          style: TextStyle(
+              color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+    ],
   );
 }
 
