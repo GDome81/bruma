@@ -379,8 +379,11 @@ class _QuoteHeaderState extends State<_QuoteHeader> {
             if (thumb != null) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: Image.memory(thumb,
-                    width: 34, height: 34, fit: BoxFit.cover),
+                child: WatermarkOverlay(
+                  dense: true,
+                  child: Image.memory(thumb,
+                      width: 34, height: 34, fit: BoxFit.cover),
+                ),
               ),
               const SizedBox(width: 8),
             ],
@@ -552,6 +555,7 @@ Future<void> showMessageActions(
       }
 
       final isFav = LocalPrefs.isFavorite(message.id);
+      final isSecret = LocalPrefs.isSecret(message.id);
 
       return SafeArea(
         child: Column(
@@ -627,6 +631,21 @@ Future<void> showMessageActions(
                 }
               },
             ),
+            if (!isText)
+              ListTile(
+                leading: Icon(isSecret ? Icons.lock : Icons.lock_outline),
+                title: Text(isSecret
+                    ? 'Rimuovi dai segreti'
+                    : 'Aggiungi ai segreti'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await LocalPrefs.setSecret(
+                      message.conversationId, message.id, !isSecret);
+                  snack(isSecret
+                      ? 'Rimosso dai segreti.'
+                      : 'Aggiunto alla galleria segreta.');
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.mood_bad),
               title: const Text('Togli la mia reaction'),

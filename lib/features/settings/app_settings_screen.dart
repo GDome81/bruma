@@ -367,6 +367,20 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             ),
           ],
           const Divider(),
+          SwitchListTile(
+            secondary: const Icon(Icons.branding_watermark_outlined),
+            title: const Text('Watermark sulle foto'),
+            subtitle: const Text(
+                'Sovrappone nome e data/ora di chi guarda (anche sulle '
+                'anteprime): scoraggia gli screenshot. In prova — puoi '
+                'toglierlo.'),
+            value: LocalPrefs.watermarkEnabled,
+            onChanged: (v) async {
+              await LocalPrefs.setWatermarkEnabled(v);
+              setState(() {});
+            },
+          ),
+          const Divider(),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text('Maschera',

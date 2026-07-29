@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_services.dart';
 import '../../core/models/models.dart';
+import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
 import '../conversation/conversation_screen.dart';
 
@@ -179,7 +180,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 color: cs.onSurfaceVariant),
                           );
                         }
-                        return Image.memory(b, fit: BoxFit.cover);
+                        return WatermarkOverlay(
+                          dense: true,
+                          child: Image.memory(b, fit: BoxFit.cover),
+                        );
                       },
                     ),
                   ),

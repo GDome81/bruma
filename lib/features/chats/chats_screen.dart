@@ -12,6 +12,7 @@ import '../contacts/add_contact_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../conversation/conversation_screen.dart';
 import '../notifications/notifications_screen.dart';
+import '../secret/secret_gallery_screen.dart';
 import '../settings/app_settings_screen.dart';
 import '../tutorial/tutorial_screen.dart';
 
@@ -153,6 +154,10 @@ class _ChatsScreenState extends State<ChatsScreen>
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'signout') AppServices.instance.signOut();
+              if (v == 'secret') {
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const SecretGalleryScreen()));
+              }
               if (v == 'security') {
                 Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const AppSettingsScreen()));
@@ -180,6 +185,8 @@ class _ChatsScreenState extends State<ChatsScreen>
                 ),
               ),
               const PopupMenuDivider(),
+              const PopupMenuItem(
+                  value: 'secret', child: Text('Galleria segreta')),
               const PopupMenuItem(
                   value: 'security', child: Text('Sicurezza')),
               const PopupMenuItem(

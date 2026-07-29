@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/app_services.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
+import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
 
 /// Statistiche GENERICHE e aggregate della conversazione (niente elenco dei
@@ -292,7 +293,10 @@ class _StatsScreenState extends State<StatsScreen> {
                               color: cs.onSurfaceVariant),
                         );
                       }
-                      return Image.memory(b, fit: BoxFit.cover);
+                      return WatermarkOverlay(
+                        dense: true,
+                        child: Image.memory(b, fit: BoxFit.cover),
+                      );
                     },
                   ),
                 ),

@@ -108,6 +108,38 @@ class LocalPrefs {
   static Future<void> setTutorialSeen(bool v) async =>
       _p?.setBool('tutorial_seen', v);
 
+  // --- Watermark sulle foto (on/off, per test) -----------------------------
+  static bool get watermarkEnabled => _p?.getBool('watermark_enabled') ?? true;
+  static Future<void> setWatermarkEnabled(bool v) async =>
+      _p?.setBool('watermark_enabled', v);
+
+  // --- Contenuti "segreti" (SOLO locali: solo id, come i preferiti) --------
+  // Voce = "conversationId|messageId". Appaiono nella galleria segreta.
+  static List<String> get _secretRaw =>
+      _p?.getStringList('secrets') ?? const [];
+
+  static bool isSecret(String messageId) =>
+      _secretRaw.any((e) => e.endsWith('|$messageId'));
+
+  /// Coppie (conversationId, messageId), dalla più recente.
+  static List<({String conversationId, String messageId})> secrets() {
+    return _secretRaw.reversed.map((e) {
+      final i = e.indexOf('|');
+      return (
+        conversationId: e.substring(0, i),
+        messageId: e.substring(i + 1),
+      );
+    }).toList();
+  }
+
+  static Future<void> setSecret(
+      String conversationId, String messageId, bool secret) async {
+    final list = _secretRaw.toList()
+      ..removeWhere((e) => e.endsWith('|$messageId'));
+    if (secret) list.add('$conversationId|$messageId');
+    await _p?.setStringList('secrets', list);
+  }
+
   // --- Messaggi preferiti (SOLO locali, nessun contenuto: solo id) ---------
   // Ogni voce è "conversationId|messageId". Non salviamo testo né nomi:
   // metadati e nome contatto vengono risolti a schermo dal server.

@@ -261,8 +261,11 @@ class _GalleryTileState extends State<_GalleryTile> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.memory(_bytes!,
-              fit: BoxFit.cover, cacheWidth: 360, gaplessPlayback: true),
+          WatermarkOverlay(
+            dense: true,
+            child: Image.memory(_bytes!,
+                fit: BoxFit.cover, cacheWidth: 360, gaplessPlayback: true),
+          ),
           Positioned(
             left: 0,
             right: 0,
