@@ -14,6 +14,7 @@ import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
 import '../../core/secure_store/favorite_notes.dart';
 import '../../core/supabase/key_request_exception.dart';
+import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
 import '../favorites/favorites_screen.dart';
 import '../viewer/viewer_screen.dart';
@@ -1256,11 +1257,13 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
                     onTap: _openFullscreen,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: Image.memory(_bytes!,
-                          height: 220,
-                          width: 260,
-                          cacheWidth: 520,
-                          fit: BoxFit.cover),
+                      child: WatermarkOverlay(
+                        child: Image.memory(_bytes!,
+                            height: 220,
+                            width: 260,
+                            cacheWidth: 520,
+                            fit: BoxFit.cover),
+                      ),
                     ),
                   ),
                   Positioned(

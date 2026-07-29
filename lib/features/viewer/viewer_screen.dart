@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/secure_screen.dart';
+import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
 
 /// Visualizzatore fullscreen di una foto GIÀ decifrata (byte in RAM). Non
@@ -94,9 +95,11 @@ class _ViewerScreenState extends State<ViewerScreen> {
         ],
       ),
       body: SafeArea(
-        child: InteractiveViewer(
-          maxScale: 5,
-          child: Center(child: Image.memory(_bytes, fit: BoxFit.contain)),
+        child: WatermarkOverlay(
+          child: InteractiveViewer(
+            maxScale: 5,
+            child: Center(child: Image.memory(_bytes, fit: BoxFit.contain)),
+          ),
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/app_services.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
+import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
 
 /// Galleria per-chat: le foto "senza limiti" che l'utente ha salvato in questa
@@ -504,12 +505,15 @@ class _ViewerPageState extends State<_ViewerPage>
     if (_bytes == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return InteractiveViewer(
-      transformationController: _tc,
-      panEnabled: _zoomed,
-      maxScale: 5,
-      child: Center(
-        child: Image.memory(_bytes!, fit: BoxFit.contain, gaplessPlayback: true),
+    return WatermarkOverlay(
+      child: InteractiveViewer(
+        transformationController: _tc,
+        panEnabled: _zoomed,
+        maxScale: 5,
+        child: Center(
+          child:
+              Image.memory(_bytes!, fit: BoxFit.contain, gaplessPlayback: true),
+        ),
       ),
     );
   }
