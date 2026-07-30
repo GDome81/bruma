@@ -58,6 +58,76 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
 
   void _reload() => setState(() => _future = _load());
 
+  Future<void> _actions(Message m) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.send_outlined),
+              title: const Text('Reinvia nella chat'),
+              onTap: () => Navigator.pop(ctx, 'resend'),
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_forever,
+                  color: Theme.of(ctx).colorScheme.error),
+              title: const Text('Cancella definitivamente'),
+              subtitle: const Text(
+                  'Rimuove la foto dallo Storage e la elimina dalla chat per '
+                  'entrambi. Irreversibile.'),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'resend') {
+      await _resend(m);
+    } else if (action == 'delete') {
+      await _delete(m);
+    }
+  }
+
+  Future<void> _delete(Message m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancellare definitivamente?'),
+        content: const Text(
+            'La foto viene rimossa dallo Storage ed eliminata dalla chat per '
+            'entrambi. L\'operazione è irreversibile.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancella'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await AppServices.instance.deleteMessageForEveryone(m);
+      _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Foto cancellata definitivamente.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Cancellazione non riuscita: $e')));
+      }
+    }
+  }
+
   Future<void> _resend(Message m) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -139,7 +209,7 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
               key: ValueKey(items[i].id),
               message: items[i],
               revealed: _revealed,
-              onResend: () => _resend(items[i]),
+              onLongPress: () => _actions(items[i]),
             ),
           );
         },
@@ -153,12 +223,12 @@ class _SecretTile extends StatefulWidget {
     super.key,
     required this.message,
     required this.revealed,
-    required this.onResend,
+    required this.onLongPress,
   });
 
   final Message message;
   final bool revealed;
-  final VoidCallback onResend;
+  final VoidCallback onLongPress;
 
   @override
   State<_SecretTile> createState() => _SecretTileState();
@@ -204,7 +274,7 @@ class _SecretTileState extends State<_SecretTile> {
     final showImage = widget.revealed && _bytes != null;
     return GestureDetector(
       onTap: showImage ? _open : null,
-      onLongPress: widget.onResend, // tieni premuto → reinvia nella chat
+      onLongPress: widget.onLongPress, // tieni premuto → reinvia / cancella
       child: showImage
           ? WatermarkOverlay(
               dense: true,
