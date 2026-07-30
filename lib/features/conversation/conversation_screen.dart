@@ -100,9 +100,15 @@ class _ConversationScreenState extends State<ConversationScreen>
     // Ricevute di lettura: UNA query per tutta la chat (non una per bolla),
     // rinfrescata quando arrivano eventi di apertura.
     _loadReadReceipts();
-    _opensSub = AppServices.instance.stats
-        .watchMyOpenEvents()
-        .listen((_) => _loadReadReceiptsSoon());
+    _opensSub = AppServices.instance.stats.watchMyOpenEvents().listen(
+          (_) => _loadReadReceiptsSoon(),
+          // Se lo stream muore non deve restare un'eccezione non gestita né
+          // spunte congelate: al prossimo rientro _resync ricarica comunque.
+          onError: (_) {},
+          cancelOnError: false,
+        );
+    // Fa valere le revoche sulla cache persistente dei testi.
+    AppServices.instance.purgeInaccessible(widget.conversationId);
     // Tutte le richieste che mi riguardano (mittente o destinatario), con ogni
     // stato: le bolle di riapertura mostrano azioni (proprietario) o esito
     // (richiedente) dal vivo.
@@ -140,6 +146,11 @@ class _ConversationScreenState extends State<ConversationScreen>
       onUpdate: _onUpdate,
     );
     _catchUpLatest();
+    // Le ricevute non dipendono più da una query per bolla: se lo stream degli
+    // eventi si è interrotto in background resterebbero congelate. Le
+    // ricarico al rientro (e ricontrollo le revoche).
+    _loadReadReceipts();
+    AppServices.instance.purgeInaccessible(widget.conversationId);
   }
 
   /// Ricarica l'ultima pagina e inserisce solo i messaggi non ancora presenti

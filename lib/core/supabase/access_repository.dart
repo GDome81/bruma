@@ -58,6 +58,22 @@ class AccessRepository {
     return map;
   }
 
+  /// Ids dei messaggi di questa conversazione che per ME non sono più apribili
+  /// (revocati dal mittente o scaduti: `active = false`), in UNA query.
+  ///
+  /// Serve a far valere la REVOCA anche sulla cache persistente dei testi: il
+  /// contenuto già decifrato va rimosso dal dispositivo, altrimenti resterebbe
+  /// leggibile dalla cache anche dopo la revoca.
+  Future<Set<String>> inactiveMessageIds(String conversationId) async {
+    final rows = await _client
+        .from('message_access')
+        .select('message_id, messages!inner(conversation_id)')
+        .eq('messages.conversation_id', conversationId)
+        .eq('recipient_id', _uid)
+        .eq('active', false);
+    return rows.map((r) => r['message_id'] as String).toSet();
+  }
+
   /// Richiede la chiave incapsulata per aprire un contenuto (check atomico
   /// lato server). Lancia [KeyRequestException] se negata.
   Future<String> requestKey(String messageId) async {

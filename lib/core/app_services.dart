@@ -581,11 +581,37 @@ class AppServices {
     _scheduleTextFlush();
   }
 
+  /// Fa valere la REVOCA sulla cache: butta via i testi (e le foto) dei
+  /// messaggi che non sono più apribili. Senza questo, un contenuto revocato
+  /// resterebbe leggibile dalla cache sul dispositivo — la revoca non
+  /// significherebbe più nulla.
+  Future<void> purgeInaccessible(String conversationId) async {
+    try {
+      final gone = await access.inactiveMessageIds(conversationId);
+      if (gone.isEmpty) return;
+      var changed = false;
+      for (final id in gone) {
+        if (_decryptedText.remove(id) != null) changed = true;
+        _openedPhotoCache.remove(id);
+        photoEcho.remove(id);
+      }
+      if (changed) {
+        _scheduleTextFlush();
+        // Le bolle testo mostrano di nuovo lo stato "non disponibile".
+        accessTick.value++;
+      }
+    } catch (_) {}
+  }
+
   /// Revoca un singolo messaggio e, se e' una foto, ne cancella il blob dallo
   /// Storage (il ciphertext non ancora aperto diventa irrecuperabile).
   Future<void> revokeMessage(Message m) async {
     await access.revokeMessage(m.id);
     _openedPhotoCache.remove(m.id);
+    // Anche la mia copia in chiaro esce dalla cache (inclusa quella su disco):
+    // un contenuto revocato non deve restare leggibile da nessuna parte.
+    if (_decryptedText.remove(m.id) != null) _scheduleTextFlush();
+    photoEcho.remove(m.id);
     if (m.type == MessageType.photo && m.storagePath != null) {
       try {
         await storage.remove(m.storagePath!);
