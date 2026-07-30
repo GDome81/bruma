@@ -108,6 +108,13 @@ class LocalPrefs {
   static Future<void> setTutorialSeen(bool v) async =>
       _p?.setBool('tutorial_seen', v);
 
+  // --- Ricerca: includere anche i ricevuti non ancora aperti? --------------
+  // Decifrarli li segna come letti per il mittente, quindi serve il consenso.
+  static bool get searchIndexAll =>
+      _p?.getBool('search_index_all') ?? false;
+  static Future<void> setSearchIndexAll(bool v) async =>
+      _p?.setBool('search_index_all', v);
+
   // --- Watermark sulle foto (on/off, per test) -----------------------------
   static bool get watermarkEnabled => _p?.getBool('watermark_enabled') ?? true;
   static Future<void> setWatermarkEnabled(bool v) async =>

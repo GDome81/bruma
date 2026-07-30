@@ -340,6 +340,7 @@ class AppServices {
     await requests.resolve(req.id, 'renewed');
     await messages.sendReopenedMarker(
         conversationId: conversationId, photoMessageId: req.messageId);
+    accessTick.value++; // la bolla mostra subito le aperture rinnovate
   }
 
   /// Reinvia il contenuto al richiedente: riapre la PROPRIA copia e la rimanda.
@@ -369,23 +370,55 @@ class AppServices {
     await requests.resolve(req.id, 'resent');
   }
 
-  /// Reinvia una MIA foto nella chat come NUOVO messaggio, con le regole di
-  /// protezione ATTUALI della conversazione (sendPhoto ne fa lo snapshot). La
-  /// riapro dalla mia copia (nessun consumo) e la ri-cifro.
-  Future<Message> resendPhotoToChat({
-    required Message message,
-    required Profile recipient,
+  /// Riabilita in chat una MIA foto già inviata: rinnova i limiti sulla copia
+  /// del DESTINATARIO (STESSA foto: nessun reinvio, nessun duplicato, nessuna
+  /// nuova statistica) e inserisce in fondo alla chat il segnaposto
+  /// "foto riaperta".
+  Future<void> reopenPhotoInChat(Message m) async {
+    await requests.renew(m.id);
+    await messages.sendReopenedMarker(
+        conversationId: m.conversationId, photoMessageId: m.id);
+    accessTick.value++; // le bolle rileggono le aperture rimaste
+  }
+
+  /// Decifra i TESTI di più messaggi riusando la cache, con un tetto di
+  /// richieste in volo (il server fa un check-and-increment per ogni chiave:
+  /// centinaia di richieste in parallelo lo metterebbero in contesa).
+  /// I messaggi non decifrabili (revocati o cifrati per un'altra identità)
+  /// vengono semplicemente saltati.
+  Future<Map<String, String>> decryptTexts(
+    List<Message> list, {
+    int concurrency = 6,
   }) async {
-    final conv = await conversations.getConversation(message.conversationId);
-    final bytes = await openContentBytes(message);
-    final sent = await messages.sendPhoto(
-      conversation: conv,
-      recipient: recipient,
-      senderPublicKey: identity.publicKey,
-      imageBytes: bytes,
-    );
-    photoEcho[sent.id] = bytes;
-    return sent;
+    final out = <String, String>{};
+    final todo = <Message>[];
+    for (final m in list) {
+      final cached = cachedText(m.id) ?? textEcho[m.id];
+      if (cached != null) {
+        out[m.id] = cached;
+      } else {
+        todo.add(m);
+      }
+    }
+    for (var i = 0; i < todo.length; i += concurrency) {
+      final end =
+          (i + concurrency) > todo.length ? todo.length : i + concurrency;
+      final slice = todo.sublist(i, end);
+      final texts = await Future.wait(slice.map((m) async {
+        try {
+          final t = utf8.decode(await openContentBytes(m));
+          cacheText(m.id, t);
+          return t;
+        } catch (_) {
+          return null; // revocato / altra identità → salta
+        }
+      }));
+      for (var j = 0; j < slice.length; j++) {
+        final t = texts[j];
+        if (t != null) out[slice[j].id] = t;
+      }
+    }
+    return out;
   }
 
   // --- Galleria (wrapper che notificano le bolle via galleryTick) ---------

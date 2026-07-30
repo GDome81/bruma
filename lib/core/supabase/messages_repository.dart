@@ -434,6 +434,40 @@ class MessagesRepository {
     return rows.map(Message.fromMap).toList();
   }
 
+  /// Tutti i messaggi della conversazione da [from] in avanti (inclusivo),
+  /// ordine crescente. Serve a SALTARE direttamente a un messaggio vecchio in
+  /// un solo giro di rete, invece di caricare pagina dopo pagina.
+  Future<List<Message>> fetchFrom({
+    required String conversationId,
+    required DateTime from,
+    int limit = 500,
+  }) async {
+    final rows = await _client
+        .from('messages')
+        .select()
+        .eq('conversation_id', conversationId)
+        .gte('created_at', from.toUtc().toIso8601String())
+        .order('created_at')
+        .limit(limit);
+    return rows.map(Message.fromMap).toList();
+  }
+
+  /// Tutti i messaggi di TESTO di una conversazione (metadati + ciphertext),
+  /// più recenti prima: la ricerca in chat li decifra lato client, perché il
+  /// server vede solo ciphertext. Esclude eliminati e messaggi di sistema.
+  Future<List<Message>> textMessages(String conversationId,
+      {int limit = 1000}) async {
+    final rows = await _client
+        .from('messages')
+        .select()
+        .eq('conversation_id', conversationId)
+        .eq('type', messageTypeToString(MessageType.text))
+        .filter('deleted_at', 'is', null)
+        .order('created_at', ascending: false)
+        .limit(limit);
+    return rows.map(Message.fromMap).toList();
+  }
+
   /// Path Storage delle foto inviate da me in una conversazione (per la
   /// cancellazione dei blob alla revoca — sezione 12 della spec).
   Future<List<String>> myPhotoStoragePaths(String conversationId) async {

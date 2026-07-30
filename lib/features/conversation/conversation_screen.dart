@@ -17,6 +17,7 @@ import '../../shared/widgets.dart';
 import '../camera/camera_screen.dart';
 import '../favorites/favorites_screen.dart';
 import '../gallery/gallery_screen.dart';
+import '../search/message_search_screen.dart';
 import '../secret/secret_gallery_screen.dart';
 import '../settings/chat_settings_screen.dart';
 import '../stats/stats_screen.dart';
@@ -54,9 +55,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   // Tutte le richieste che mi riguardano (mittente o destinatario), per foto:
   // l'ultima per ogni messaggio → stato + azioni sulle bolle di riapertura.
   Map<String, ContentRequest> _reqByMessage = {};
-  bool _showProtectionBanner = true;
 
-  Conversation? _conversation;
   String? _error;
   bool _loadingInitial = true;
   bool _loadingOlder = false;
@@ -66,6 +65,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   bool _showEmoji = false;
   bool _showScrollDown = false; // tasto "vai all'ultimo messaggio"
   int _newCount = 0; // messaggi arrivati mentre sono scrollato in alto
+  bool _jumping = false; // sto caricando la cronologia per saltare a un messaggio
   Message? _replyingTo;
   DateTime? _lastReadAtOpen;
   String? _highlightId; // messaggio evidenziato dopo il tap su una citazione
@@ -83,7 +83,6 @@ class _ConversationScreenState extends State<ConversationScreen>
     WidgetsBinding.instance.addObserver(this);
     _lastReadAtOpen = LocalPrefs.lastRead(widget.conversationId);
     _positions.itemPositions.addListener(_onPositions);
-    _loadConversation();
     _loadInitial();
     _msgChannel = AppServices.instance.messages.subscribeConversation(
       widget.conversationId,
@@ -170,14 +169,6 @@ class _ConversationScreenState extends State<ConversationScreen>
     super.dispose();
   }
 
-  Future<void> _loadConversation() async {
-    try {
-      final c = await AppServices.instance.conversations
-          .getConversation(widget.conversationId);
-      if (mounted) setState(() => _conversation = c);
-    } catch (_) {}
-  }
-
   Future<void> _loadInitial() async {
     try {
       final page = await AppServices.instance.messages
@@ -256,6 +247,10 @@ class _ConversationScreenState extends State<ConversationScreen>
     final mine = m.senderId == AppServices.instance.uid;
     final atBottom = _isAtBottom();
     setState(() => _messages.add(m));
+    // "Foto riaperta": la bolla della foto deve rileggere subito le aperture.
+    if (m.type == MessageType.reopened) {
+      AppServices.instance.accessTick.value++;
+    }
     _markRead();
     if (mine || atBottom) {
       _scrollToBottomSoon(); // seguo se ho inviato io o ero già in fondo
@@ -643,27 +638,57 @@ class _ConversationScreenState extends State<ConversationScreen>
     return null;
   }
 
-  /// Porta la vista sul messaggio a cui si riferisce la richiesta.
+  /// Porta la vista su un messaggio (citazione, preferito, risultato di
+  /// ricerca). Se non è nella pagina caricata NON scorre pagina per pagina:
+  /// legge la data del messaggio e carica in UN SOLO giro di rete tutti i
+  /// messaggi da lì in avanti.
   Future<void> _goToMessage(String messageId) async {
-    // Carica pagine più vecchie finché il messaggio non è nella lista (max 10).
-    var attempts = 0;
-    while (_messages.indexWhere((m) => m.id == messageId) < 0 &&
-        _hasMore &&
-        attempts < 10) {
-      await _loadOlder();
-      attempts++;
+    if (_messages.indexWhere((m) => m.id == messageId) < 0) {
+      setState(() => _jumping = true);
+      try {
+        final target =
+            await AppServices.instance.messages.getMessage(messageId);
+        if (target != null) {
+          final page = await AppServices.instance.messages.fetchFrom(
+            conversationId: widget.conversationId,
+            from: target.createdAt,
+          );
+          if (!mounted) return;
+          // Unisci senza duplicati e riordina (le bolle ottimistiche restano).
+          final known = _messages.map((m) => m.id).toSet();
+          final fresh = page.where((m) => !known.contains(m.id)).toList();
+          if (fresh.isNotEmpty) {
+            _messages
+              ..addAll(fresh)
+              ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+            await _reloadReactions();
+          }
+        }
+      } catch (_) {
+        // Fallback: prosegui con quello che c'è già in lista.
+      } finally {
+        if (mounted) setState(() => _jumping = false);
+      }
     }
+
     final idx = _messages.indexWhere((m) => m.id == messageId);
-    if (idx >= 0 && _itemScroll.isAttached) {
+    if (idx < 0) {
+      _snack('Contenuto non più disponibile nella cronologia.');
+      return;
+    }
+    // Dopo il merge la lista è appena cambiata: attendi il frame così
+    // ScrollablePositionedList è agganciato e gli indici sono validi.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_itemScroll.isAttached) return;
+      final i = _messages.indexWhere((m) => m.id == messageId);
+      if (i < 0) return;
       _itemScroll.scrollTo(
-        index: _messages.length - 1 - idx, // indice invertito (reverse)
+        index: _messages.length - 1 - i, // indice invertito (reverse)
         duration: const Duration(milliseconds: 300),
         alignment: 0.3,
       );
       _flashMessage(messageId);
-    } else {
-      _snack('Contenuto non più disponibile nella cronologia.');
-    }
+    });
   }
 
   /// Evidenzia brevemente un messaggio (come WhatsApp quando tocchi una
@@ -710,7 +735,6 @@ class _ConversationScreenState extends State<ConversationScreen>
             ChatSettingsScreen(conversationId: widget.conversationId),
       ),
     );
-    _loadConversation();
   }
 
   void _openStats() {
@@ -736,6 +760,17 @@ class _ConversationScreenState extends State<ConversationScreen>
   void _openFavorites() {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => FavoritesScreen(
+        conversationId: widget.conversationId,
+        other: widget.other,
+        // Torna a questa chat (senza duplicarla) e salta al messaggio.
+        onJump: _goToMessage,
+      ),
+    ));
+  }
+
+  void _openSearch() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MessageSearchScreen(
         conversationId: widget.conversationId,
         other: widget.other,
         // Torna a questa chat (senza duplicarla) e salta al messaggio.
@@ -799,11 +834,18 @@ class _ConversationScreenState extends State<ConversationScreen>
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Cerca nella chat',
+            icon: const Icon(Icons.search),
+            onPressed: _openSearch,
+          ),
           PopupMenuButton<String>(
             tooltip: 'Menu',
             icon: const Icon(Icons.more_vert),
             onSelected: (v) {
               switch (v) {
+                case 'search':
+                  _openSearch();
                 case 'gallery':
                   _openGallery();
                 case 'stats':
@@ -821,6 +863,7 @@ class _ConversationScreenState extends State<ConversationScreen>
             itemBuilder: (_) {
               final muted = LocalPrefs.isChatMuted(widget.conversationId);
               return [
+                _menuItem('search', Icons.search, 'Cerca nella chat'),
                 _menuItem('gallery', Icons.collections_outlined, 'Galleria'),
                 _menuItem('stats', Icons.bar_chart, 'Statistiche'),
                 _menuItem('favorites', Icons.star_border, 'Preferiti'),
@@ -842,10 +885,9 @@ class _ConversationScreenState extends State<ConversationScreen>
           ? ErrorView(message: _error!)
           : Column(
               children: [
-                if (_conversation != null && _showProtectionBanner)
-                  _protectionBanner(_conversation!),
-                // Le richieste di riapertura ora appaiono come messaggi in chat
-                // (bolla "reopen_request"), non più come banner in cima.
+                // Niente banner in cima: le regole di protezione si vedono dal
+                // menu ⋮ → Protezione, e le richieste di riapertura appaiono
+                // come messaggi in chat (bolla "reopen_request").
                 Expanded(child: _messageList(me, firstUnread)),
                 _inputBar(),
               ],
@@ -940,6 +982,13 @@ class _ConversationScreenState extends State<ConversationScreen>
     return Stack(
       children: [
         list,
+        if (_jumping)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
         if (_showScrollDown)
           Positioned(
             right: 12,
@@ -977,40 +1026,6 @@ class _ConversationScreenState extends State<ConversationScreen>
                 style: TextStyle(color: cs.primary, fontSize: 12)),
           ),
           Expanded(child: Divider(color: cs.primary.withValues(alpha: 0.4))),
-        ],
-      ),
-    );
-  }
-
-  Widget _protectionBanner(Conversation c) {
-    final cs = Theme.of(context).colorScheme;
-    final opens = c.maxOpens <= 0 ? '∞' : '${c.maxOpens}';
-    final dur = c.maxDurationSeconds <= 0 ? '∞' : '${c.maxDurationSeconds}s';
-    return Container(
-      width: double.infinity,
-      color: cs.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        children: [
-          Icon(c.protectionEnabled ? Icons.shield : Icons.shield_outlined,
-              size: 16, color: cs.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              c.protectionEnabled
-                  ? 'Foto protette · $opens aperture · $dur'
-                  : 'Protezione foto disattivata',
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ),
-          InkWell(
-            onTap: () => setState(() => _showProtectionBanner = false),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(Icons.close, size: 16, color: cs.onSurfaceVariant),
-            ),
-          ),
         ],
       ),
     );

@@ -34,6 +34,7 @@ class SecretGalleryScreen extends StatefulWidget {
 class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
   late Future<List<Message>> _future;
   bool _revealed = false;
+  final Set<String> _reopened = {}; // evita avvisi doppi in chat
 
   @override
   void initState() {
@@ -66,9 +67,11 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.send_outlined),
-              title: const Text('Reinvia nella chat'),
-              onTap: () => Navigator.pop(ctx, 'resend'),
+              leading: const Icon(Icons.lock_open_outlined),
+              title: const Text('Rendi di nuovo apribile'),
+              subtitle: const Text(
+                  'Riabilita QUESTA foto nella chat, senza inviarne una copia.'),
+              onTap: () => Navigator.pop(ctx, 'reopen'),
             ),
             ListTile(
               leading: Icon(Icons.delete_forever,
@@ -84,8 +87,8 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
       ),
     );
     if (!mounted) return;
-    if (action == 'resend') {
-      await _resend(m);
+    if (action == 'reopen') {
+      await _reopen(m);
     } else if (action == 'delete') {
       await _delete(m);
     }
@@ -128,37 +131,65 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
     }
   }
 
-  Future<void> _resend(Message m) async {
+  void _snack(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  /// Riabilita la STESSA foto (rinnovo dei limiti), senza inviarne una copia.
+  Future<void> _reopen(Message m) async {
+    if (_reopened.contains(m.id)) {
+      _snack('Foto già riabilitata poco fa.');
+      return;
+    }
+    final access = AppServices.instance.access;
+    // Revocata? revoke_message disattiva TUTTE le copie e cancella il blob:
+    // rinnovare non la riporterebbe in vita (il file cifrato non c'è più).
+    try {
+      final mineAccess = await access.getMyAccess(m.id);
+      if (mineAccess != null && !mineAccess.active) {
+        _snack('Foto revocata: il file cifrato è stato cancellato, non può '
+            'essere riabilitata. Puoi solo inviarne una nuova.');
+        return;
+      }
+      // Già apribile dall'altro → nessun rinnovo necessario (evita un avviso
+      // "foto riaperta" inutile in chat).
+      final theirs = await access.getRecipientAccess(m.id);
+      if (theirs != null && theirs.isOpenable) {
+        _snack('Questa foto è già apribile: nessun rinnovo necessario.');
+        return;
+      }
+    } catch (_) {
+      // Controlli best-effort: se falliscono si prosegue col rinnovo.
+    }
+    if (!mounted) return;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Reinvia nella chat?'),
+        title: const Text('Rendere di nuovo apribile?'),
         content: const Text(
-            'La foto verrà inviata di nuovo come nuovo messaggio, con le regole '
-            'di protezione ATTUALI della chat (numero aperture e scadenza).'),
+            'La STESSA foto già inviata torna apribile: il contatore di '
+            'aperture si azzera e la scadenza viene rimossa. Non viene creata '
+            'nessuna copia e non cambiano le statistiche. In chat comparirà un '
+            'avviso "foto riaperta".'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Annulla')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Reinvia')),
+              child: const Text('Riabilita')),
         ],
       ),
     );
     if (ok != true || !mounted) return;
     try {
-      await AppServices.instance
-          .resendPhotoToChat(message: m, recipient: widget.other);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Foto reinviata nella chat.')));
-      }
+      await AppServices.instance.reopenPhotoInChat(m);
+      _reopened.add(m.id);
+      _snack('Foto di nuovo apribile nella chat.');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Reinvio non riuscito: $e')));
-      }
+      _snack('Riabilitazione non riuscita: $e');
     }
   }
 

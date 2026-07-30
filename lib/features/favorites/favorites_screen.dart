@@ -63,9 +63,12 @@ class FavoritesScreen extends StatefulWidget {
 }
 
 class _FavItem {
-  _FavItem(this.message, this.note);
+  _FavItem(this.message, this.note, this.text);
   final Message message;
   final String? note;
+
+  /// Testo decifrato del messaggio (null per le foto o se non decifrabile).
+  final String? text;
 }
 
 class _FavoritesScreenState extends State<FavoritesScreen> {
@@ -84,14 +87,16 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     if (favs.isEmpty) return [];
     final ids = favs.map((f) => f.messageId).toList();
     final msgs = await AppServices.instance.messages.getByIds(ids);
-    final byId = {for (final m in msgs) m.id: m};
-    final out = <_FavItem>[];
-    for (final f in favs) {
-      final m = byId[f.messageId];
-      if (m == null) continue; // messaggio sparito → salto
-      final note = await FavoriteNotes.get(m.id);
-      out.add(_FavItem(m, note));
-    }
+    if (msgs.isEmpty) return [];
+    // Note in UNA sola lettura dello storage cifrato e testi decifrati in
+    // parallelo (prima era una lettura + una decifratura per riga, in
+    // sequenza: da qui la lentezza e i "Messaggio di testo" generici).
+    final texts = await AppServices.instance.decryptTexts(
+        msgs.where((m) => m.type == MessageType.text).toList());
+    final notes = await FavoriteNotes.getMany(msgs.map((m) => m.id));
+    final out = [
+      for (final m in msgs) _FavItem(m, notes[m.id], texts[m.id]),
+    ];
     // Ordina per data del messaggio ORIGINALE (più recente prima).
     out.sort((a, b) => b.message.createdAt.compareTo(a.message.createdAt));
     return out;
@@ -174,10 +179,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     final mine = m.senderId == AppServices.instance.uid;
     final isPhoto = m.type == MessageType.photo;
     final canRequest = !mine && isPhoto; // foto ricevuta → posso chiederne la riapertura
-    // Anteprima SOLO da cache in RAM: non fa richieste né consuma aperture.
-    final cachedText = m.type == MessageType.text
-        ? AppServices.instance.cachedText(m.id)
-        : null;
+    // Testo decifrato in _load (il testo non è mai protetto: nessuna apertura
+    // consumata). Per le foto la miniatura solo se già in cache.
+    final cachedText = item.text ?? AppServices.instance.cachedText(m.id);
     final cachedBytes =
         isPhoto ? AppServices.instance.cachedPhotoBytes(m.id) : null;
 
@@ -195,10 +199,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       );
     }
 
-    // Anteprima del messaggio (testo se in cache, altrimenti il tipo).
+    // Anteprima: il testo decifrato (sempre disponibile ora), altrimenti il tipo.
     final preview = (cachedText != null && cachedText.trim().isNotEmpty)
         ? cachedText.trim()
-        : (isPhoto ? 'Foto' : 'Messaggio di testo');
+        : (isPhoto ? 'Foto' : 'Testo non disponibile');
     final author = mine ? 'Tu' : widget.other.displayName;
     final meta = '$author · ${formatTimestamp(m.createdAt)}';
     final hasNote = item.note != null && item.note!.isNotEmpty;

@@ -91,7 +91,9 @@ class _NotificationHostState extends State<NotificationHost>
     final messenger = ScaffoldMessenger.of(context);
     messenger.clearSnackBars();
     messenger.showSnackBar(SnackBar(
-      duration: const Duration(seconds: 6),
+      duration: const Duration(seconds: 4),
+      // ✕ per chiuderlo subito: a volte restava sullo schermo dando fastidio.
+      showCloseIcon: true,
       content: Text(n == 1
           ? 'Nuova richiesta di riapertura di un contenuto.'
           : '$n nuove richieste di riapertura.'),
