@@ -53,6 +53,15 @@ class ConversationsRepository {
         convs.map((c) => c.otherUserId(_uid)).toSet().toList();
     final profiles = await _profiles.getProfilesByIds(otherIds);
 
+    // Percorso rapido: ultimo messaggio + non letti di TUTTE le chat in una
+    // sola RPC (prima erano 2 richieste per conversazione, in sequenza).
+    try {
+      return await _viewsViaRpc(convs, profiles);
+    } catch (_) {
+      // Migration chat_list non ancora applicata (o errore): ripiega sul
+      // percorso vecchio, più lento ma sempre funzionante.
+    }
+
     // In parallelo per ogni conversazione: ultimo messaggio + conteggio non letti.
     final views = await Future.wait(convs.map((c) async {
       final otherId = c.otherUserId(_uid);
@@ -69,6 +78,53 @@ class ConversationsRepository {
       );
     }));
 
+    _sortByRecent(views);
+    return views;
+  }
+
+  /// Costruisce le viste con la RPC `chat_list`: una sola richiesta per tutte le
+  /// conversazioni. Le soglie di lettura sono locali al dispositivo, quindi
+  /// vengono passate come parametro.
+  Future<List<ConversationView>> _viewsViaRpc(
+    List<Conversation> convs,
+    Map<String, Profile> profiles,
+  ) async {
+    final lastRead = <String, String>{};
+    for (final c in convs) {
+      final t = LocalPrefs.lastRead(c.id);
+      if (t != null) lastRead[c.id] = t.toUtc().toIso8601String();
+    }
+    final rows = await _client
+        .rpc('chat_list', params: {'p_last_read': lastRead}) as List<dynamic>;
+    final byConv = <String, ({Message? last, int unread})>{};
+    for (final r in rows) {
+      final row = r as Map<String, dynamic>;
+      final lm = row['last_message'];
+      byConv[row['conversation_id'] as String] = (
+        last: lm == null
+            ? null
+            : Message.fromMap(Map<String, dynamic>.from(lm as Map)),
+        unread: (row['unread'] as num?)?.toInt() ?? 0,
+      );
+    }
+    final views = [
+      for (final c in convs)
+        ConversationView(
+          conversation: c,
+          other: profiles[c.otherUserId(_uid)] ??
+              Profile(
+                  id: c.otherUserId(_uid),
+                  displayName: 'Sconosciuto',
+                  publicKey: ''),
+          lastMessage: byConv[c.id]?.last,
+          unread: byConv[c.id]?.unread ?? 0,
+        ),
+    ];
+    _sortByRecent(views);
+    return views;
+  }
+
+  void _sortByRecent(List<ConversationView> views) {
     views.sort((a, b) {
       final ta = a.lastMessage?.createdAt;
       final tb = b.lastMessage?.createdAt;
@@ -77,7 +133,6 @@ class ConversationsRepository {
       if (tb == null) return -1;
       return tb.compareTo(ta);
     });
-    return views;
   }
 
   Future<void> updateProtection(

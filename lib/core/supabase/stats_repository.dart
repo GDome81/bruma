@@ -25,6 +25,33 @@ class StatsRepository {
     return rows.isNotEmpty;
   }
 
+  /// Ids dei MIEI messaggi in questa conversazione già aperti dal destinatario,
+  /// in UNA sola query. Prima ogni bolla ne faceva una per conto proprio: con
+  /// una schermata di messaggi erano decine di richieste (scroll a scatti).
+  /// Filtra via inner join (niente elenco di id nell'URL, che oltre una certa
+  /// lunghezza fa fallire la richiesta con 400).
+  Future<Set<String>> readMessageIds(String conversationId) async {
+    try {
+      // RPC con `distinct`: una riga per messaggio, non per apertura.
+      final rows = await _client.rpc('read_message_ids',
+          params: {'p_conversation_id': conversationId}) as List<dynamic>;
+      return rows.map((e) => e as String).toSet();
+    } catch (_) {
+      // Migration non ancora applicata: percorso tabella. Qui una riga per
+      // APERTURA, quindi ordino dalle più recenti e limito: oltre il tetto di
+      // righe la risposta sarebbe troncata in modo arbitrario.
+      final rows = await _client
+          .from('open_events')
+          .select('message_id, messages!inner(conversation_id)')
+          .eq('messages.conversation_id', conversationId)
+          .eq('outcome', 'granted')
+          .neq('recipient_id', _uid) // escludi le mie riletture
+          .order('opened_at', ascending: false)
+          .limit(1000);
+      return rows.map((r) => r['message_id'] as String).toSet();
+    }
+  }
+
   Future<List<OpenEvent>> eventsForMessage(String messageId) async {
     final rows = await _client
         .from('open_events')

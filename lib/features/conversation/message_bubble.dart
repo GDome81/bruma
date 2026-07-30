@@ -849,44 +849,37 @@ class _ReadReceipt extends StatefulWidget {
 }
 
 class _ReadReceiptState extends State<_ReadReceipt> {
-  bool _read = false;
-
   @override
   void initState() {
     super.initState();
-    _fetch();
-    AppServices.instance.openEventsTick.addListener(_fetch);
+    AppServices.instance.openEventsTick.addListener(_onTick);
   }
 
   @override
   void dispose() {
-    AppServices.instance.openEventsTick.removeListener(_fetch);
+    AppServices.instance.openEventsTick.removeListener(_onTick);
     super.dispose();
   }
 
-  Future<void> _fetch() async {
-    // Una bolla ancora "in invio" non ha un id sul server: niente da chiedere.
-    if (widget.message.pending) return;
-    try {
-      // "Letto" = il destinatario ha un evento 'granted' (vale anche per i
-      // testi, che non incrementano open_count perché senza protezione).
-      final read =
-          await AppServices.instance.stats.wasReadByRecipient(widget.message.id);
-      if (mounted) setState(() => _read = read);
-    } catch (_) {}
+  void _onTick() {
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // "Letto" = il destinatario ha un evento 'granted'. Lo stato arriva
+    // dall'insieme caricato una volta sola dalla conversazione: nessuna
+    // richiesta al server per singola bolla.
+    final read = AppServices.instance.isReadByRecipient(widget.message.id);
     // Distinzione per CONTEGGIO di spunte (accessibile anche ai daltonici):
     //   1 spunta grigia  = in invio (il server non ha ancora confermato)
     //   2 spunte grigie  = inviato (il server ha salvato il messaggio)
     //   3 spunte blu     = letto (il destinatario l'ha aperto)
     final bool pending = widget.message.pending;
-    final int count = pending ? 1 : (_read ? 3 : 2);
-    final Color color = _read ? _readBlue : cs.onSurfaceVariant;
-    final String tip = pending ? 'In invio' : (_read ? 'Letto' : 'Inviato');
+    final int count = pending ? 1 : (read ? 3 : 2);
+    final Color color = read ? _readBlue : cs.onSurfaceVariant;
+    final String tip = pending ? 'In invio' : (read ? 'Letto' : 'Inviato');
     return Tooltip(
       message: tip,
       child: Row(

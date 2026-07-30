@@ -66,6 +66,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   bool _showScrollDown = false; // tasto "vai all'ultimo messaggio"
   int _newCount = 0; // messaggi arrivati mentre sono scrollato in alto
   bool _jumping = false; // sto caricando la cronologia per saltare a un messaggio
+  Timer? _receiptsDebounce;
   Message? _replyingTo;
   DateTime? _lastReadAtOpen;
   String? _highlightId; // messaggio evidenziato dopo il tap su una citazione
@@ -96,9 +97,12 @@ class _ConversationScreenState extends State<ConversationScreen>
     AppServices.instance.reactionsTick.addListener(_reloadReactions);
     // Aggiorna la stellina sulle bolle quando cambio i preferiti.
     AppServices.instance.favoritesTick.addListener(_onFavoritesChanged);
+    // Ricevute di lettura: UNA query per tutta la chat (non una per bolla),
+    // rinfrescata quando arrivano eventi di apertura.
+    _loadReadReceipts();
     _opensSub = AppServices.instance.stats
         .watchMyOpenEvents()
-        .listen((_) => AppServices.instance.openEventsTick.value++);
+        .listen((_) => _loadReadReceiptsSoon());
     // Tutte le richieste che mi riguardano (mittente o destinatario), con ogni
     // stato: le bolle di riapertura mostrano azioni (proprietario) o esito
     // (richiedente) dal vivo.
@@ -159,6 +163,7 @@ class _ConversationScreenState extends State<ConversationScreen>
     AppServices.instance.reactionsTick.removeListener(_reloadReactions);
     AppServices.instance.favoritesTick.removeListener(_onFavoritesChanged);
     _reactDebounce?.cancel();
+    _receiptsDebounce?.cancel();
     _highlightTimer?.cancel();
     _opensSub?.cancel();
     _requestsSub?.cancel();
@@ -258,6 +263,23 @@ class _ConversationScreenState extends State<ConversationScreen>
       // Sono scrollato in alto: non trascinare, segnala col badge sul tasto.
       setState(() => _newCount++);
     }
+  }
+
+  Future<void> _loadReadReceipts() async {
+    try {
+      final ids = await AppServices.instance.stats
+          .readMessageIds(widget.conversationId);
+      if (mounted) {
+        AppServices.instance.setReadReceipts(widget.conversationId, ids);
+      }
+    } catch (_) {}
+  }
+
+  // Più eventi di apertura ravvicinati → una sola query.
+  void _loadReadReceiptsSoon() {
+    _receiptsDebounce?.cancel();
+    _receiptsDebounce =
+        Timer(const Duration(milliseconds: 400), _loadReadReceipts);
   }
 
   bool _isSystem(Message m) =>

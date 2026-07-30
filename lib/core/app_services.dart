@@ -17,6 +17,7 @@ import 'notifications.dart';
 import 'notify_platform.dart';
 import 'secure_screen.dart';
 import 'secure_store/key_store.dart';
+import 'secure_store/text_cache_store.dart';
 import 'supabase/access_repository.dart';
 import 'supabase/auth_repository.dart';
 import 'supabase/contacts_repository.dart';
@@ -79,8 +80,22 @@ class AppServices {
   final Map<String, String> textEcho = {};
   final Map<String, Uint8List> photoEcho = {};
 
-  /// Cache in RAM dei testi ricevuti NON protetti (decifrati una sola volta).
+  /// Cache dei testi NON protetti già decifrati. Vive in RAM ed è PERSISTITA
+  /// cifrata a riposo (vedi [TextCacheStore]): senza persistenza ogni riavvio
+  /// costringeva a un giro di rete per messaggio (scroll a scatti, ricerca
+  /// lenta). Le foto restano invece solo in RAM.
   final Map<String, String> _decryptedText = {};
+
+  TextCacheStore? _textStoreCache;
+  TextCacheStore get _textStore =>
+      _textStoreCache ??= TextCacheStore(crypto);
+  Timer? _textFlush;
+
+  /// A quale account appartengono i testi attualmente in RAM. Serve perché la
+  /// sessione può cadere SENZA passare da signOut() (refresh token scaduto,
+  /// logout offline che solleva): senza questo marcatore i testi del vecchio
+  /// utente resterebbero in memoria e verrebbero persistiti sotto il NUOVO uid.
+  String? _textCacheUid;
 
   /// Cache in RAM (MAI su disco) dei byte in chiaro di foto già aperte: evita
   /// di ri-scaricare e ri-decifrare la stessa foto a ogni rebuild (galleria che
@@ -90,6 +105,28 @@ class AppServices {
   /// Incrementa a ogni evento di apertura ricevuto via Realtime: le ricevute
   /// di lettura (doppia spunta) vi si agganciano per aggiornarsi dal vivo.
   final ValueNotifier<int> openEventsTick = ValueNotifier<int>(0);
+
+  /// Ids dei miei messaggi già letti dal destinatario, caricati in UNA query
+  /// per conversazione. Le bolle li leggono da qui senza interrogare il server
+  /// una per una (era la causa di decine di richieste per schermata).
+  /// Indicizzati per conversazione: due chat aperte in pila non si sovrascrivono
+  /// le spunte a vicenda.
+  final Map<String, Set<String>> _readByConversation = {};
+
+  bool isReadByRecipient(String messageId) {
+    for (final ids in _readByConversation.values) {
+      if (ids.contains(messageId)) return true;
+    }
+    return false;
+  }
+
+  void setReadReceipts(String conversationId, Iterable<String> ids) {
+    // UNIONE, non sostituzione: "letto" è monotono (una volta letto resta
+    // letto), così una risposta parziale non può far tornare "non letto" un
+    // messaggio già segnato.
+    (_readByConversation[conversationId] ??= <String>{}).addAll(ids);
+    openEventsTick.value++; // le spunte si ridisegnano
+  }
 
   /// Incrementa quando una mia richiesta di contenuto viene gestita
   /// (rinnovo/reinvio): le bolle foto rileggono lo stato di accesso dal vivo.
@@ -123,8 +160,53 @@ class AppServices {
   }
 
   String? cachedText(String messageId) => _decryptedText[messageId];
-  void cacheText(String messageId, String value) =>
-      _decryptedText[messageId] = value;
+
+  void cacheText(String messageId, String value) {
+    // Le bolle ottimistiche hanno id provvisori ("temp_…"): non persisterle,
+    // altrimenti resterebbero orfane nella cache.
+    _decryptedText[messageId] = value;
+    if (!messageId.startsWith('temp_')) _scheduleTextFlush();
+  }
+
+  /// Scrive la cache testi su disco (cifrata) al massimo una volta ogni pochi
+  /// secondi: durante uno scroll arrivano decine di cacheText di seguito.
+  void _scheduleTextFlush() {
+    _textFlush?.cancel();
+    _textFlush = Timer(const Duration(seconds: 3), _flushTextCache);
+  }
+
+  Future<void> _flushTextCache() async {
+    final currentUid = client.auth.currentUser?.id;
+    // Non scrivere se i testi in RAM appartengono a un altro account.
+    if (currentUid == null || _textCacheUid != currentUid) return;
+    final snapshot = Map<String, String>.from(_decryptedText)
+      ..removeWhere((k, _) => k.startsWith('temp_'));
+    await _textStore.save(currentUid, snapshot);
+    // Se durante la scrittura si è usciti (o cambiato account), rimuovi ciò che
+    // è appena stato scritto: un flush in volo non deve resuscitare la cache.
+    if (_textCacheUid != currentUid) await _textStore.clear(currentUid);
+  }
+
+  /// Carica la cache testi persistita per l'utente corrente.
+  Future<void> _loadTextCache(String currentUid) async {
+    // Cambio account senza passare da signOut: butta tutto ciò che è in RAM,
+    // altrimenti i testi del vecchio utente finirebbero salvati sotto questo.
+    if (_textCacheUid != null && _textCacheUid != currentUid) {
+      _decryptedText.clear();
+      textEcho.clear();
+      photoEcho.clear();
+      _openedPhotoCache.clear();
+      _readByConversation.clear();
+    }
+    _textCacheUid = currentUid;
+    try {
+      final stored = await _textStore.load(currentUid);
+      // Non sovrascrivere ciò che è già stato decifrato in questa sessione.
+      for (final e in stored.entries) {
+        _decryptedText.putIfAbsent(e.key, () => e.value);
+      }
+    } catch (_) {}
+  }
 
   /// Coppia di chiavi dell'utente corrente (per unwrap delle chiavi).
   KeyPair get identity => _identity!;
@@ -178,6 +260,8 @@ class AppServices {
       return;
     }
     _setIdentity(await keyStore.load(currentUid));
+    // Testi già decifrati in sessioni precedenti: riaprire le chat è immediato.
+    await _loadTextCache(currentUid);
     // Timeout: se il server è lento, IdentityGate mostra un errore con
     // "Riprova" invece di restare all'infinito su "Carico l'identità…".
     myProfile =
@@ -264,7 +348,10 @@ class AppServices {
     await profiles.updatePublicKey(crypto.encodePublicKey(kp.publicKey));
     _setIdentity(kp);
     myProfile = await profiles.getMyProfile();
-    // Svuota le cache in RAM (cifrate con la vecchia chiave).
+    // Svuota le cache (i contenuti erano cifrati con la vecchia chiave), anche
+    // quella persistita: i testi di prima non sono più pertinenti.
+    _textFlush?.cancel();
+    await _textStore.clear(uid);
     _decryptedText.clear();
     textEcho.clear();
     photoEcho.clear();
@@ -485,10 +572,14 @@ class AppServices {
     _decryptedText.remove(m.id);
     photoEcho.remove(m.id);
     _openedPhotoCache.remove(m.id);
+    _scheduleTextFlush(); // il testo eliminato esce anche dalla cache su disco
   }
 
   /// Invalida il testo in cache (es. quando arriva una modifica dal mittente).
-  void invalidateText(String messageId) => _decryptedText.remove(messageId);
+  void invalidateText(String messageId) {
+    _decryptedText.remove(messageId);
+    _scheduleTextFlush();
+  }
 
   /// Revoca un singolo messaggio e, se e' una foto, ne cancella il blob dallo
   /// Storage (il ciphertext non ancora aperto diventa irrecuperabile).
@@ -713,12 +804,28 @@ class AppServices {
     await _removeFcmTokenForThisDevice();
     await _fcmRefreshSub?.cancel();
     _fcmRefreshSub = null;
-    await auth.signOut();
-    _setIdentity(null);
-    myProfile = null;
-    textEcho.clear();
-    photoEcho.clear();
-    _decryptedText.clear();
+    // Cancella la cache testi PRIMA del signOut (dopo `uid` non c'è più):
+    // uscendo non deve restare la cronologia sul dispositivo.
+    final leavingUid = client.auth.currentUser?.id;
+    _textFlush?.cancel();
+    // Prima di tutto: sgancia la cache dall'account. Un flush già in volo si
+    // accorgerà che l'utente non è più quello e non riscriverà nulla.
+    _textCacheUid = null;
+    if (leavingUid != null) await _textStore.clear(leavingUid);
+    try {
+      await auth.signOut();
+    } finally {
+      // Anche se il signOut remoto fallisce (tipico offline: solleva DOPO aver
+      // già scartato la sessione) le cache locali vanno svuotate, altrimenti i
+      // testi in chiaro del vecchio account resterebbero in memoria.
+      _setIdentity(null);
+      myProfile = null;
+      textEcho.clear();
+      photoEcho.clear();
+      _decryptedText.clear();
+      _openedPhotoCache.clear();
+      _readByConversation.clear();
+    }
   }
 
   Future<void> _removeFcmTokenForThisDevice() async {

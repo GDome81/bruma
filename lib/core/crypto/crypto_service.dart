@@ -93,6 +93,26 @@ class CryptoService {
     return EncryptedContent(blob, key);
   }
 
+  /// Cifra [plaintext] con una chiave GIÀ esistente (stesso formato blob:
+  /// `nonce || ciphertext`). Usata per la cache locale cifrata a riposo, dove
+  /// la chiave vive nel Keystore e viene riusata per tutte le scritture.
+  Uint8List encryptWithKey(Uint8List plaintext, SecureKey key) {
+    final aead = _sodium.crypto.aeadXChaCha20Poly1305IETF;
+    final nonce = _sodium.randombytes.buf(aead.nonceBytes);
+    final cipher = aead.encrypt(message: plaintext, nonce: nonce, key: key);
+    return Uint8List(nonce.length + cipher.length)
+      ..setAll(0, nonce)
+      ..setAll(nonce.length, cipher);
+  }
+
+  /// Nuova chiave simmetrica (cache locale).
+  SecureKey newSymmetricKey() =>
+      _sodium.crypto.aeadXChaCha20Poly1305IETF.keygen();
+
+  /// Ricostruisce una chiave simmetrica dai byte salvati nel Keystore.
+  SecureKey symmetricKeyFromBytes(Uint8List raw) =>
+      SecureKey.fromList(_sodium, raw);
+
   /// Decifra un blob `nonce || ciphertext` con la chiave [key].
   Uint8List decryptContent(Uint8List blob, SecureKey key) {
     final aead = _sodium.crypto.aeadXChaCha20Poly1305IETF;
