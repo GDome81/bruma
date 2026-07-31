@@ -8,6 +8,7 @@ import 'core/app_services.dart';
 import 'core/local_prefs.dart';
 import 'core/version_check.dart';
 import 'features/auth/auth_screen.dart';
+import 'features/auth/decoy_calendar_screen.dart';
 import 'features/auth/decoy_common.dart';
 import 'features/auth/decoy_gallery_screen.dart';
 import 'features/auth/decoy_moon_screen.dart';
@@ -100,6 +101,8 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
         return const DecoyMoonScreen();
       case DecoyType.gallery:
         return const DecoyGalleryScreen();
+      case DecoyType.calendar:
+        return const DecoyCalendarScreen();
       case DecoyType.calculator:
         return const DecoyScreen();
     }

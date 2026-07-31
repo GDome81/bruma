@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../../core/app_services.dart';
 
 /// Tipo di "maschera" con cui l'app si presenta quando è bloccata.
-enum DecoyType { calculator, moonPhase, gallery }
+enum DecoyType { calculator, moonPhase, gallery, calendar }
 
 DecoyType decoyTypeFromString(String? s) {
   switch (s) {
@@ -11,6 +11,8 @@ DecoyType decoyTypeFromString(String? s) {
       return DecoyType.moonPhase;
     case 'gallery':
       return DecoyType.gallery;
+    case 'calendar':
+      return DecoyType.calendar;
     default:
       return DecoyType.calculator;
   }
@@ -26,6 +28,23 @@ String decoyTypeLabel(DecoyType t) {
       return 'Fasi lunari';
     case DecoyType.gallery:
       return 'Galleria foto';
+    case DecoyType.calendar:
+      return 'Calendario';
+  }
+}
+
+/// Come si sblocca ogni maschera: i gesti sono nascosti per definizione, quindi
+/// vanno ricordati all'utente quando la scegli.
+String decoyUnlockHint(DecoyType t) {
+  switch (t) {
+    case DecoyType.calculator:
+      return 'Digita il PIN e premi "="';
+    case DecoyType.moonPhase:
+      return 'PIN nel campo data, oppure tieni premuta la luna';
+    case DecoyType.gallery:
+      return 'Tieni premuto sul titolo della galleria';
+    case DecoyType.calendar:
+      return 'Tieni premuto sul nome del mese, o PIN nel campo "Cerca"';
   }
 }
 

@@ -57,6 +57,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
         return Icons.nightlight_round;
       case DecoyType.gallery:
         return Icons.photo_library_outlined;
+      case DecoyType.calendar:
+        return Icons.calendar_month_outlined;
     }
   }
 
@@ -396,6 +398,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             return ListTile(
               leading: Icon(_decoyIcon(t)),
               title: Text(decoyTypeLabel(t)),
+              subtitle: Text(decoyUnlockHint(t),
+                  style: const TextStyle(fontSize: 12)),
               trailing: selected
                   ? Icon(Icons.check_circle,
                       color: Theme.of(context).colorScheme.primary)

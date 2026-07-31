@@ -108,6 +108,21 @@ class LocalPrefs {
   static Future<void> setTutorialSeen(bool v) async =>
       _p?.setBool('tutorial_seen', v);
 
+  // --- Maschera "Calendario": impegni locali (voce = "aaaa-mm-gg|titolo") ---
+  // Sono finti/personali dell'utente, servono a rendere credibile la maschera.
+  // Nessun contenuto di Bruma finisce qui.
+  static List<String> get decoyEvents =>
+      _p?.getStringList('decoy_events') ?? const [];
+  static Future<void> setDecoyEvents(List<String> v) async =>
+      _p?.setStringList('decoy_events', v);
+
+  /// Se true la maschera Calendario mostra gli impegni VERI del telefono
+  /// (richiede il permesso Calendario su Android).
+  static bool get decoyRealCalendar =>
+      _p?.getBool('decoy_real_calendar') ?? false;
+  static Future<void> setDecoyRealCalendar(bool v) async =>
+      _p?.setBool('decoy_real_calendar', v);
+
   // --- Ricerca: includere anche i ricevuti non ancora aperti? --------------
   // Decifrarli li segna come letti per il mittente, quindi serve il consenso.
   static bool get searchIndexAll =>
