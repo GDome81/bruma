@@ -817,6 +817,7 @@ class _ConversationScreenState extends State<ConversationScreen>
       builder: (_) => SecretGalleryScreen(
         conversationId: widget.conversationId,
         other: widget.other,
+        onJump: _goToMessage,
       ),
     ));
   }

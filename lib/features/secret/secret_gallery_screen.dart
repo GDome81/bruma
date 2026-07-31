@@ -22,10 +22,15 @@ class SecretGalleryScreen extends StatefulWidget {
     super.key,
     required this.conversationId,
     required this.other,
+    required this.onJump,
   });
 
   final String conversationId;
   final Profile other;
+
+  /// Chiamata (dopo aver chiuso questa schermata) per saltare al punto della
+  /// chat dove sta quella foto, senza aprire una seconda copia della chat.
+  final void Function(String messageId) onJump;
 
   @override
   State<SecretGalleryScreen> createState() => _SecretGalleryScreenState();
@@ -67,6 +72,13 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.forum_outlined),
+              title: const Text('Vai al messaggio in chat'),
+              subtitle:
+                  const Text('Apre la chat nel punto in cui hai inviato la foto.'),
+              onTap: () => Navigator.pop(ctx, 'jump'),
+            ),
+            ListTile(
               leading: const Icon(Icons.lock_open_outlined),
               title: const Text('Rendi di nuovo apribile'),
               subtitle: const Text(
@@ -87,7 +99,11 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
       ),
     );
     if (!mounted) return;
-    if (action == 'reopen') {
+    if (action == 'jump') {
+      // Chiudi la galleria e chiedi alla chat sottostante di saltare alla foto.
+      Navigator.of(context).pop();
+      widget.onJump(m.id);
+    } else if (action == 'reopen') {
       await _reopen(m);
     } else if (action == 'delete') {
       await _delete(m);

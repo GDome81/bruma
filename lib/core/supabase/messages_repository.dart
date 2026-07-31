@@ -357,11 +357,22 @@ class MessagesRepository {
 
   Future<List<Reaction>> reactionsForMessages(List<String> messageIds) async {
     if (messageIds.isEmpty) return [];
-    final rows = await _client
+    // A blocchi: un unico `in.(...)` con centinaia di id genera un URL troppo
+    // lungo e il server risponde 400 (le reactions sparirebbero in silenzio).
+    const chunk = 150;
+    final batches = <List<String>>[];
+    for (var i = 0; i < messageIds.length; i += chunk) {
+      final end =
+          (i + chunk) > messageIds.length ? messageIds.length : i + chunk;
+      batches.add(messageIds.sublist(i, end));
+    }
+    final results = await Future.wait(batches.map((ids) => _client
         .from('message_reactions')
         .select()
-        .inFilter('message_id', messageIds);
-    return rows.map(Reaction.fromMap).toList();
+        .inFilter('message_id', ids)));
+    return [
+      for (final rows in results) ...rows.map(Reaction.fromMap),
+    ];
   }
 
   /// Sottoscrive qualunque cambio di reaction visibile (RLS limita ai messaggi
@@ -447,7 +458,11 @@ class MessagesRepository {
         .select()
         .eq('conversation_id', conversationId)
         .gte('created_at', from.toUtc().toIso8601String())
-        .order('created_at')
+        // ATTENZIONE: `order` di default è DISCENDENTE. Serve CRESCENTE, così la
+        // finestra parte dal messaggio cercato: al contrario, in una chat con
+        // più di `limit` messaggi successivi, il messaggio richiesto restava
+        // fuori e il salto falliva con "non più disponibile".
+        .order('created_at', ascending: true)
         .limit(limit);
     return rows.map(Message.fromMap).toList();
   }
