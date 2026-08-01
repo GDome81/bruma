@@ -90,12 +90,19 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       final me = AppServices.instance.uid;
       final all = await AppServices.instance.messages
           .textMessages(widget.conversationId);
-      // Sicuri da decifrare: i miei (l'apertura non è visibile all'altro) e i
-      // ricevuti già aperti (una seconda apertura non aggiunge informazione).
+      // Soglia di lettura della chat: tutto ciò che è più vecchio l'ho già
+      // aperto. Ri-decifrarlo NON rivela nulla di nuovo al mittente, perché la
+      // ricevuta è "letto sì/no" (esistenza di un evento), non un conteggio.
+      final lastRead = LocalPrefs.lastRead(widget.conversationId);
+      // Sicuri da decifrare: i miei (l'apertura non è visibile all'altro), i
+      // ricevuti già in cache e quelli già letti secondo la soglia.
       final safe = <Message>[];
       final unopened = <Message>[];
       for (final m in all) {
+        final alreadyRead =
+            lastRead != null && !m.createdAt.isAfter(lastRead);
         if (m.senderId == me ||
+            alreadyRead ||
             AppServices.instance.cachedText(m.id) != null ||
             LocalPrefs.searchIndexAll) {
           safe.add(m);
@@ -210,6 +217,9 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       body: Column(
         children: [
           if (_indexing) const LinearProgressIndicator(minHeight: 2),
+          // In CIMA e sempre visibile: se una parte della chat è fuori
+          // dall'indice bisogna saperlo subito, non dopo una ricerca a vuoto.
+          if (!_loading && _pendingUnopened.isNotEmpty) _unopenedBanner(cs),
           Expanded(child: _body(cs)),
         ],
       ),
@@ -226,23 +236,17 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       return EmptyView(
         icon: Icons.search,
         title: 'Cerca nei messaggi',
-        subtitle: 'Scrivi almeno 2 caratteri. Vengono cercati '
-            '${_index.length} messaggi di testo di questa chat.',
+        subtitle: 'Scrivi almeno 2 caratteri. Sono indicizzati '
+            '${_index.length} messaggi di questa chat.',
       );
     }
     final results = _results;
     if (results.isEmpty) {
-      return Column(
-        children: [
-          Expanded(
-            child: EmptyView(
-              icon: Icons.search_off,
-              title: 'Nessun risultato',
-              subtitle: 'Nessun messaggio contiene "$q".',
-            ),
-          ),
-          _unopenedFooter(cs),
-        ],
+      return EmptyView(
+        icon: Icons.search_off,
+        title: 'Nessun risultato',
+        subtitle: 'Nessuno dei ${_index.length} messaggi indicizzati '
+            'contiene "$q".',
       );
     }
     return Column(
@@ -254,35 +258,37 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
             itemBuilder: (_, i) => _tile(results[i], q, cs),
           ),
         ),
-        _unopenedFooter(cs),
       ],
     );
   }
 
-  /// Invito (solo se ci sono ricevuti mai aperti) a estendere la ricerca.
-  Widget _unopenedFooter(ColorScheme cs) {
-    if (_pendingUnopened.isEmpty) return const SizedBox.shrink();
+  /// Avviso in cima: parte della chat non è cercabile perché quei messaggi
+  /// ricevuti non sono mai stati aperti su questo dispositivo, e decifrarli li
+  /// segnerebbe come letti per chi li ha inviati.
+  Widget _unopenedBanner(ColorScheme cs) {
     return Material(
-      color: cs.surfaceContainerHighest,
-      child: InkWell(
-        onTap: _indexing ? null : _indexUnopened,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Icon(Icons.mark_email_unread_outlined,
-                  size: 18, color: cs.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '${_pendingUnopened.length} messaggi non ancora aperti non '
-                  'sono nella ricerca (verrebbero segnati come letti). Tocca '
-                  'per includerli.',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
+      color: cs.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Row(
+          children: [
+            Icon(Icons.mark_email_unread_outlined,
+                size: 20, color: cs.onSecondaryContainer),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${_pendingUnopened.length} messaggi più vecchi non sono '
+                'cercabili: non li hai mai aperti su questo dispositivo.',
+                style: TextStyle(
+                    fontSize: 12, color: cs.onSecondaryContainer),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonal(
+              onPressed: _indexing ? null : _indexUnopened,
+              child: const Text('Includi'),
+            ),
+          ],
         ),
       ),
     );

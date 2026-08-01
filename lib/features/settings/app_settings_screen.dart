@@ -6,6 +6,7 @@ import '../../core/app_icon.dart';
 import '../../core/app_services.dart';
 import '../../core/config.dart';
 import '../../core/local_prefs.dart';
+import '../../core/real_calendar.dart';
 import '../../shared/widgets.dart';
 import '../auth/decoy_common.dart';
 import '../tutorial/tutorial_screen.dart';
@@ -60,6 +61,24 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       case DecoyType.calendar:
         return Icons.calendar_month_outlined;
     }
+  }
+
+  /// Accendendo l'opzione chiede il permesso Calendario: se l'utente lo nega
+  /// l'interruttore resta spento (meglio del calendario finto vuoto che sembra
+  /// funzionante ma non lo è).
+  Future<void> _toggleRealCalendar(bool v) async {
+    if (!v) {
+      await LocalPrefs.setDecoyRealCalendar(false);
+      if (mounted) setState(() {});
+      return;
+    }
+    final ok = await requestCalendarPermission();
+    if (!ok) {
+      _snack('Permesso Calendario negato: resta il calendario locale.');
+      return;
+    }
+    await LocalPrefs.setDecoyRealCalendar(true);
+    if (mounted) setState(() {});
   }
 
   Future<void> _toggleBiometric(bool v) async {
@@ -410,6 +429,19 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               },
             );
           }),
+          // Solo su APK: sul web non esiste accesso al calendario di sistema.
+          if (!kIsWeb &&
+              decoyTypeFromString(LocalPrefs.decoyType) == DecoyType.calendar)
+            SwitchListTile(
+              secondary: const Icon(Icons.event_available_outlined),
+              title: const Text('Mostra gli impegni reali'),
+              subtitle: const Text(
+                  'La maschera Calendario mostra gli appuntamenti veri del '
+                  'telefono (sola lettura: Bruma non li modifica). Molto più '
+                  'credibile di un calendario vuoto.'),
+              value: LocalPrefs.decoyRealCalendar,
+              onChanged: _toggleRealCalendar,
+            ),
           _appIconSection(context),
           const Divider(),
           ListTile(

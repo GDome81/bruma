@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../core/local_prefs.dart';
+import '../../core/real_calendar.dart';
 import 'decoy_common.dart';
+
+/// Una voce mostrata nel calendario. Quelle REALI vengono dal calendario del
+/// telefono: sono in sola lettura e non vengono mai salvate da Bruma.
+class _Entry {
+  _Entry(this.title, {required this.local});
+  final String title;
+  final bool local;
+}
 
 /// Maschera "Calendario": sembra una normale app di calendario, con griglia del
 /// mese e impegni consultabili/aggiungibili (salvati SOLO in locale, nessun
@@ -36,8 +45,11 @@ class _DecoyCalendarScreenState extends State<DecoyCalendarScreen>
   bool _showSearch = false;
   bool _showAdd = false;
 
-  /// Impegni per giorno ("aaaa-mm-gg" → titoli).
+  /// Impegni LOCALI per giorno ("aaaa-mm-gg" → titoli). Persistiti.
   final Map<String, List<String>> _events = {};
+
+  /// Impegni REALI del telefono per giorno. Solo in memoria, mai salvati.
+  final Map<String, List<String>> _real = {};
 
   @override
   void initState() {
@@ -46,6 +58,38 @@ class _DecoyCalendarScreenState extends State<DecoyCalendarScreen>
     _visibleMonth = DateTime(now.year, now.month);
     _selected = DateTime(now.year, now.month, now.day);
     _loadEvents();
+    _loadReal();
+  }
+
+  /// Legge gli impegni veri del mese visibile (solo se l'utente ha attivato
+  /// l'opzione e concesso il permesso). Sola lettura.
+  Future<void> _loadReal() async {
+    if (!LocalPrefs.decoyRealCalendar) return;
+    final from = DateTime(_visibleMonth.year, _visibleMonth.month - 1);
+    final to = DateTime(_visibleMonth.year, _visibleMonth.month + 2);
+    final list = await readCalendarEvents(from, to);
+    if (!mounted) return;
+    setState(() {
+      _real.clear();
+      for (final e in list) {
+        (_real[_key(e.day)] ??= []).add(e.title);
+      }
+    });
+  }
+
+  /// Voci del giorno: prima le reali (non cancellabili), poi le locali.
+  List<_Entry> _entriesFor(DateTime d) {
+    final k = _key(d);
+    return [
+      for (final t in _real[k] ?? const <String>[]) _Entry(t, local: false),
+      for (final t in _events[k] ?? const <String>[]) _Entry(t, local: true),
+    ];
+  }
+
+  bool _hasAny(DateTime d) {
+    final k = _key(d);
+    return (_real[k]?.isNotEmpty ?? false) ||
+        (_events[k]?.isNotEmpty ?? false);
   }
 
   @override
@@ -111,9 +155,12 @@ class _DecoyCalendarScreenState extends State<DecoyCalendarScreen>
       setState(() => _showSearch = false);
       return;
     }
-    final keys = _events.keys.toList()..sort();
+    final keys = <String>{..._events.keys, ..._real.keys}.toList()..sort();
     for (final k in keys) {
-      final hit = _events[k]!.any((t) => t.toLowerCase().contains(q));
+      final hit = [
+        ...?_events[k],
+        ...?_real[k],
+      ].any((t) => t.toLowerCase().contains(q));
       if (hit) {
         final d = DateTime.tryParse(k);
         if (d != null) {
@@ -122,6 +169,7 @@ class _DecoyCalendarScreenState extends State<DecoyCalendarScreen>
             _selected = d;
             _showSearch = false;
           });
+          _loadReal();
           return;
         }
       }
@@ -132,12 +180,13 @@ class _DecoyCalendarScreenState extends State<DecoyCalendarScreen>
   void _shiftMonth(int delta) {
     setState(() => _visibleMonth =
         DateTime(_visibleMonth.year, _visibleMonth.month + delta));
+    _loadReal(); // gli impegni veri si leggono per mese visibile
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final dayEvents = _events[_key(_selected)] ?? const <String>[];
+    final dayEvents = _entriesFor(_selected);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Calendario'),
@@ -290,7 +339,7 @@ class _DecoyCalendarScreenState extends State<DecoyCalendarScreen>
         date.month == today.month &&
         date.day == today.day;
     final isSelected = date == _selected;
-    final hasEvents = (_events[_key(date)] ?? const []).isNotEmpty;
+    final hasEvents = _hasAny(date);
 
     return InkWell(
       onTap: () => setState(() => _selected = date),
@@ -337,7 +386,7 @@ class _DecoyCalendarScreenState extends State<DecoyCalendarScreen>
     );
   }
 
-  Widget _dayList(ColorScheme cs, List<String> dayEvents) {
+  Widget _dayList(ColorScheme cs, List<_Entry> dayEvents) {
     final label =
         '${_selected.day} ${_months[_selected.month - 1].toLowerCase()}';
     if (dayEvents.isEmpty) {
@@ -360,15 +409,19 @@ class _DecoyCalendarScreenState extends State<DecoyCalendarScreen>
                   fontWeight: FontWeight.bold,
                   color: cs.onSurfaceVariant)),
         ),
-        for (final t in dayEvents)
+        for (final e in dayEvents)
           ListTile(
             leading: Icon(Icons.event, color: cs.primary),
-            title: Text(t),
-            trailing: IconButton(
-              tooltip: 'Elimina',
-              icon: const Icon(Icons.close, size: 18),
-              onPressed: () => _removeEvent(t),
-            ),
+            title: Text(e.title),
+            // Gli impegni VERI del telefono sono in sola lettura: niente
+            // pulsante elimina (Bruma non tocca il calendario di sistema).
+            trailing: e.local
+                ? IconButton(
+                    tooltip: 'Elimina',
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => _removeEvent(e.title),
+                  )
+                : null,
           ),
       ],
     );

@@ -6,6 +6,10 @@
     <!-- Maschera "Galleria": legge le foto del telefono (photo_manager). -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <!-- Maschera "Calendario": mostra gli impegni veri in SOLA LETTURA.
+         Nessun WRITE_CALENDAR: l'app non scrive mai nel calendario del
+         telefono (gli impegni aggiunti dalla maschera restano locali). -->
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
     <uses-feature android:name="android.hardware.camera.any" android:required="false"/>
     <application
         android:label="Bruma"

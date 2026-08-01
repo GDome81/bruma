@@ -69,6 +69,11 @@ dependencies:
   # Apertura link cliccabili nei messaggi (solo http/https).
   url_launcher: ^6.3.0
 
+  # Maschera "Calendario": mostra gli impegni VERI del telefono in SOLA LETTURA
+  # (solo APK; su web non esiste accesso al calendario di sistema → resta il
+  # calendario locale). Isolato dietro import condizionato (real_calendar.dart).
+  device_calendar: ^4.3.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
