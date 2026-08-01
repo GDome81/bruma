@@ -470,17 +470,29 @@ class MessagesRepository {
   /// Tutti i messaggi di TESTO di una conversazione (metadati + ciphertext),
   /// più recenti prima: la ricerca in chat li decifra lato client, perché il
   /// server vede solo ciphertext. Esclude eliminati e messaggi di sistema.
+  /// Scarica a PAGINE: sia un `limit` alto sia una richiesta senza limite
+  /// verrebbero comunque troncati dal tetto di righe del server (1000), e la
+  /// ricerca finirebbe per coprire solo i messaggi più recenti.
   Future<List<Message>> textMessages(String conversationId,
-      {int limit = 1000}) async {
-    final rows = await _client
-        .from('messages')
-        .select()
-        .eq('conversation_id', conversationId)
-        .eq('type', messageTypeToString(MessageType.text))
-        .filter('deleted_at', 'is', null)
-        .order('created_at', ascending: false)
-        .limit(limit);
-    return rows.map(Message.fromMap).toList();
+      {int max = 20000}) async {
+    const page = 500;
+    final out = <Message>[];
+    var offset = 0;
+    while (out.length < max) {
+      final rows = await _client
+          .from('messages')
+          .select()
+          .eq('conversation_id', conversationId)
+          .eq('type', messageTypeToString(MessageType.text))
+          .filter('deleted_at', 'is', null)
+          .order('created_at', ascending: false)
+          .range(offset, offset + page - 1);
+      if (rows.isEmpty) break;
+      out.addAll(rows.map(Message.fromMap));
+      if (rows.length < page) break; // ultima pagina
+      offset += page;
+    }
+    return out;
   }
 
   /// Path Storage delle foto inviate da me in una conversazione (per la

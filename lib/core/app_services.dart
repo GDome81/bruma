@@ -473,9 +473,13 @@ class AppServices {
   /// centinaia di richieste in parallelo lo metterebbero in contesa).
   /// I messaggi non decifrabili (revocati o cifrati per un'altra identità)
   /// vengono semplicemente saltati.
+  /// [onBatch] viene chiamato dopo ogni gruppo con i testi appena decifrati e
+  /// quanti ne restano: permette a chi chiama (la ricerca) di mostrare
+  /// risultati e avanzamento invece di uno spinner muto su migliaia di messaggi.
   Future<Map<String, String>> decryptTexts(
     List<Message> list, {
     int concurrency = 6,
+    void Function(Map<String, String> batch, int done, int total)? onBatch,
   }) async {
     final out = <String, String>{};
     final todo = <Message>[];
@@ -493,17 +497,26 @@ class AppServices {
       final slice = todo.sublist(i, end);
       final texts = await Future.wait(slice.map((m) async {
         try {
-          final t = utf8.decode(await openContentBytes(m));
+          // Timeout per messaggio: senza, una singola richiesta appesa
+          // bloccherebbe l'indicizzazione per sempre (spinner infinito).
+          final bytes = await openContentBytes(m)
+              .timeout(const Duration(seconds: 15));
+          final t = utf8.decode(bytes);
           cacheText(m.id, t);
           return t;
         } catch (_) {
-          return null; // revocato / altra identità → salta
+          return null; // revocato / altra identità / timeout → salta
         }
       }));
+      final batch = <String, String>{};
       for (var j = 0; j < slice.length; j++) {
         final t = texts[j];
-        if (t != null) out[slice[j].id] = t;
+        if (t != null) {
+          out[slice[j].id] = t;
+          batch[slice[j].id] = t;
+        }
       }
+      onBatch?.call(batch, end, todo.length);
     }
     return out;
   }

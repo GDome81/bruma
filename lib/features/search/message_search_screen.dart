@@ -66,6 +66,8 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
   List<Message> _pendingUnopened = []; // ricevuti mai aperti (fuori indice)
   bool _loading = true;
   bool _indexing = false;
+  int _indexDone = 0;
+  int _indexTotal = 0;
   Object? _error;
   String _query = '';
 
@@ -110,18 +112,35 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
           unopened.add(m);
         }
       }
-      final texts = await AppServices.instance.decryptTexts(safe);
+      // Prima passata: ciò che è già in cache compare SUBITO (niente attesa).
+      final byId = {for (final m in safe) m.id: m};
+      _index.clear();
+      for (final m in safe) {
+        final cached = AppServices.instance.cachedText(m.id);
+        if (cached != null) _index.add(_Hit(m, cached));
+      }
       if (!mounted) return;
       setState(() {
-        _index
-          ..clear()
-          ..addAll([
-            for (final m in safe)
-              if (texts[m.id] != null) _Hit(m, texts[m.id]!),
-          ]);
         _pendingUnopened = unopened;
         _loading = false;
+        _indexing = _index.length < safe.length;
       });
+      // Seconda passata: decifra il resto mostrando i risultati man mano.
+      await AppServices.instance.decryptTexts(
+        safe,
+        onBatch: (batch, done, total) {
+          if (!mounted) return;
+          setState(() {
+            for (final e in batch.entries) {
+              final m = byId[e.key];
+              if (m != null) _index.add(_Hit(m, e.value));
+            }
+            _indexDone = done;
+            _indexTotal = total;
+          });
+        },
+      );
+      if (mounted) setState(() => _indexing = false);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -216,7 +235,20 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       ),
       body: Column(
         children: [
-          if (_indexing) const LinearProgressIndicator(minHeight: 2),
+          if (_indexing) ...[
+            LinearProgressIndicator(
+              minHeight: 2,
+              value: _indexTotal == 0 ? null : _indexDone / _indexTotal,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+              child: Text(
+                'Sto preparando la ricerca… $_indexDone/$_indexTotal '
+                '(i risultati compaiono man mano)',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
+          ],
           // In CIMA e sempre visibile: se una parte della chat è fuori
           // dall'indice bisogna saperlo subito, non dopo una ricerca a vuoto.
           if (!_loading && _pendingUnopened.isNotEmpty) _unopenedBanner(cs),
