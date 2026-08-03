@@ -17,7 +17,7 @@ import 'notifications.dart';
 import 'notify_platform.dart';
 import 'secure_screen.dart';
 import 'secure_store/key_store.dart';
-import 'secure_store/text_cache_store.dart';
+import 'secure_store/text_store.dart';
 import 'supabase/access_repository.dart';
 import 'supabase/auth_repository.dart';
 import 'supabase/contacts_repository.dart';
@@ -81,15 +81,19 @@ class AppServices {
   final Map<String, Uint8List> photoEcho = {};
 
   /// Cache dei testi NON protetti già decifrati. Vive in RAM ed è PERSISTITA
-  /// cifrata a riposo (vedi [TextCacheStore]): senza persistenza ogni riavvio
+  /// cifrata a riposo (vedi [TextStore]): senza persistenza ogni riavvio
   /// costringeva a un giro di rete per messaggio (scroll a scatti, ricerca
   /// lenta). Le foto restano invece solo in RAM.
   final Map<String, String> _decryptedText = {};
 
-  TextCacheStore? _textStoreCache;
-  TextCacheStore get _textStore =>
-      _textStoreCache ??= TextCacheStore(crypto);
+  TextStore? _textStoreCache;
+  TextStore get _textStore => _textStoreCache ??= TextStore(crypto);
   Timer? _textFlush;
+
+  /// Solo i messaggi da scrivere/rimuovere al prossimo flush: si salva ciò che
+  /// è cambiato, non tutto l'archivio.
+  final Set<String> _dirtyTexts = {};
+  final Set<String> _removedTexts = {};
 
   /// A quale account appartengono i testi attualmente in RAM. Serve perché la
   /// sessione può cadere SENZA passare da signOut() (refresh token scaduto,
@@ -165,7 +169,10 @@ class AppServices {
     // Le bolle ottimistiche hanno id provvisori ("temp_…"): non persisterle,
     // altrimenti resterebbero orfane nella cache.
     _decryptedText[messageId] = value;
-    if (!messageId.startsWith('temp_')) _scheduleTextFlush();
+    if (messageId.startsWith('temp_')) return;
+    _dirtyTexts.add(messageId);
+    _removedTexts.remove(messageId);
+    _scheduleTextFlush();
   }
 
   /// Scrive la cache testi su disco (cifrata) al massimo una volta ogni pochi
@@ -179,11 +186,21 @@ class AppServices {
     final currentUid = client.auth.currentUser?.id;
     // Non scrivere se i testi in RAM appartengono a un altro account.
     if (currentUid == null || _textCacheUid != currentUid) return;
-    final snapshot = Map<String, String>.from(_decryptedText)
-      ..removeWhere((k, _) => k.startsWith('temp_'));
-    await _textStore.save(currentUid, snapshot);
+    // Solo le modifiche: niente riscrittura dell'intero archivio.
+    final toWrite = <String, String>{};
+    for (final id in _dirtyTexts) {
+      final t = _decryptedText[id];
+      if (t != null) toWrite[id] = t;
+    }
+    final toRemove = _removedTexts.toList();
+    _dirtyTexts.clear();
+    _removedTexts.clear();
+    if (toWrite.isNotEmpty) await _textStore.put(currentUid, toWrite);
+    if (toRemove.isNotEmpty) {
+      await _textStore.removeIds(currentUid, toRemove);
+    }
     // Se durante la scrittura si è usciti (o cambiato account), rimuovi ciò che
-    // è appena stato scritto: un flush in volo non deve resuscitare la cache.
+    // è appena stato scritto: un flush in volo non deve resuscitare l'archivio.
     if (_textCacheUid != currentUid) await _textStore.clear(currentUid);
   }
 
@@ -351,6 +368,8 @@ class AppServices {
     // Svuota le cache (i contenuti erano cifrati con la vecchia chiave), anche
     // quella persistita: i testi di prima non sono più pertinenti.
     _textFlush?.cancel();
+    _dirtyTexts.clear();
+    _removedTexts.clear();
     await _textStore.clear(uid);
     _decryptedText.clear();
     textEcho.clear();
@@ -582,17 +601,24 @@ class AppServices {
   /// cache locali.
   Future<void> deleteMessageForEveryone(Message m) async {
     await messages.deleteMessage(m);
-    _decryptedText.remove(m.id);
+    _dropText(m.id);
     photoEcho.remove(m.id);
     _openedPhotoCache.remove(m.id);
-    _scheduleTextFlush(); // il testo eliminato esce anche dalla cache su disco
+  }
+
+  /// Toglie un testo dalla RAM E lo mette in coda per la cancellazione su
+  /// disco: se restasse nell'archivio locale, una revoca o un'eliminazione
+  /// tornerebbero leggibili al prossimo avvio.
+  bool _dropText(String messageId) {
+    final had = _decryptedText.remove(messageId) != null;
+    _dirtyTexts.remove(messageId);
+    _removedTexts.add(messageId);
+    _scheduleTextFlush();
+    return had;
   }
 
   /// Invalida il testo in cache (es. quando arriva una modifica dal mittente).
-  void invalidateText(String messageId) {
-    _decryptedText.remove(messageId);
-    _scheduleTextFlush();
-  }
+  void invalidateText(String messageId) => _dropText(messageId);
 
   /// Fa valere la REVOCA sulla cache: butta via i testi (e le foto) dei
   /// messaggi che non sono più apribili. Senza questo, un contenuto revocato
@@ -604,12 +630,11 @@ class AppServices {
       if (gone.isEmpty) return;
       var changed = false;
       for (final id in gone) {
-        if (_decryptedText.remove(id) != null) changed = true;
+        if (_dropText(id)) changed = true;
         _openedPhotoCache.remove(id);
         photoEcho.remove(id);
       }
       if (changed) {
-        _scheduleTextFlush();
         // Le bolle testo mostrano di nuovo lo stato "non disponibile".
         accessTick.value++;
       }
@@ -621,9 +646,9 @@ class AppServices {
   Future<void> revokeMessage(Message m) async {
     await access.revokeMessage(m.id);
     _openedPhotoCache.remove(m.id);
-    // Anche la mia copia in chiaro esce dalla cache (inclusa quella su disco):
-    // un contenuto revocato non deve restare leggibile da nessuna parte.
-    if (_decryptedText.remove(m.id) != null) _scheduleTextFlush();
+    // Anche la mia copia in chiaro esce dall'archivio (RAM e disco): un
+    // contenuto revocato non deve restare leggibile da nessuna parte.
+    _dropText(m.id);
     photoEcho.remove(m.id);
     if (m.type == MessageType.photo && m.storagePath != null) {
       try {
@@ -850,6 +875,8 @@ class AppServices {
     // Prima di tutto: sgancia la cache dall'account. Un flush già in volo si
     // accorgerà che l'utente non è più quello e non riscriverà nulla.
     _textCacheUid = null;
+    _dirtyTexts.clear();
+    _removedTexts.clear();
     if (leavingUid != null) await _textStore.clear(leavingUid);
     try {
       await auth.signOut();

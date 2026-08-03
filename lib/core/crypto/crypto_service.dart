@@ -105,6 +105,20 @@ class CryptoService {
       ..setAll(nonce.length, cipher);
   }
 
+  /// Hash CON CHIAVE (BLAKE2b keyed), base64. Serve a rendere opachi gli
+  /// identificatori usati come chiavi di riga nel database locale: senza la
+  /// chiave non si risale né all'id del messaggio né all'account, quindi dal
+  /// file su disco non si legge nulla oltre al numero di righe.
+  /// Deterministico: lo stesso input dà sempre la stessa chiave di riga.
+  String keyedHashB64(String data, SecureKey key) {
+    final out = _sodium.crypto.genericHash(
+      message: Uint8List.fromList(utf8.encode(data)),
+      key: key,
+      outLen: 32,
+    );
+    return base64Encode(out);
+  }
+
   /// Nuova chiave simmetrica (cache locale).
   SecureKey newSymmetricKey() =>
       _sodium.crypto.aeadXChaCha20Poly1305IETF.keygen();
