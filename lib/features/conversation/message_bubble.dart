@@ -924,6 +924,34 @@ class _TextBubbleState extends State<_TextBubble> {
   String? get _cached => AppServices.instance.cachedText(widget.message.id);
 
   @override
+  void initState() {
+    super.initState();
+    // Quando una revoca svuota la cache (purgeInaccessible) la bolla deve
+    // ridisegnarsi: senza questo ascolto continuava a mostrare il testo già
+    // in memoria, e la revoca sembrava non aver effetto.
+    AppServices.instance.accessTick.addListener(_onAccessChanged);
+  }
+
+  @override
+  void dispose() {
+    AppServices.instance.accessTick.removeListener(_onAccessChanged);
+    super.dispose();
+  }
+
+  void _onAccessChanged() {
+    if (!mounted) return;
+    // Il testo è stato tolto dalla cache → riparti da zero (rifarà la
+    // richiesta al server, che negherà se il contenuto è stato revocato).
+    if (_cached == null) {
+      setState(() {
+        _started = false;
+        _loading = false;
+        _error = null;
+      });
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant _TextBubble old) {
     super.didUpdateWidget(old);
     // Se il messaggio è stato modificato da ALTRI, ridecifra (le mie modifiche

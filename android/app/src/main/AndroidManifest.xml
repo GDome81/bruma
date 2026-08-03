@@ -11,9 +11,17 @@
          telefono (gli impegni aggiunti dalla maschera restano locali). -->
     <uses-permission android:name="android.permission.READ_CALENDAR"/>
     <uses-feature android:name="android.hardware.camera.any" android:required="false"/>
+    <!-- Backup DISATTIVATO. Di default Android carica i dati dell'app sul cloud
+         di Google: ci finirebbero l'archivio locale dei testi (bruma_t.db) e le
+         preferenze, cioè proprio ciò che non deve lasciare il dispositivo. In
+         più, ripristinati su un altro telefono sarebbero indecifrabili (la
+         chiave resta nel Keystore) ma non cancellabili dall'app. -->
     <application
         android:label="Bruma"
         android:name="${applicationName}"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

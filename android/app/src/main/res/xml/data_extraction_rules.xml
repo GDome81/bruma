@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31). Esclude TUTTO da backup cloud e da trasferimento
+  device-to-device: l'archivio locale dei testi, le preferenze e lo storage
+  sicuro non devono lasciare il dispositivo. Le regole sono necessarie perché
+  su API 31+ `allowBackup="false"` da solo non copre il trasferimento diretto
+  fra due telefoni.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

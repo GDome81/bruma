@@ -175,11 +175,31 @@ class AppServices {
     _scheduleTextFlush();
   }
 
-  /// Scrive la cache testi su disco (cifrata) al massimo una volta ogni pochi
-  /// secondi: durante uno scroll arrivano decine di cacheText di seguito.
+  /// Coalesce le scritture (durante uno scroll arrivano decine di cacheText),
+  /// MA con un tetto: il debounce da solo si riarmava a ogni scrittura, quindi
+  /// un'indicizzazione lunga poteva rinviarlo all'infinito e perdere tutto se
+  /// l'app veniva chiusa.
+  static const _flushDebounce = Duration(seconds: 3);
+  static const _flushMaxDelay = Duration(seconds: 15);
+  DateTime? _firstPendingWrite;
+
   void _scheduleTextFlush() {
+    final now = DateTime.now();
+    _firstPendingWrite ??= now;
+    if (now.difference(_firstPendingWrite!) >= _flushMaxDelay) {
+      _textFlush?.cancel();
+      _flushTextCache();
+      return;
+    }
     _textFlush?.cancel();
-    _textFlush = Timer(const Duration(seconds: 3), _flushTextCache);
+    _textFlush = Timer(_flushDebounce, _flushTextCache);
+  }
+
+  /// Scrive subito ciò che è in attesa. Da chiamare quando l'app passa in
+  /// background: Android congela e uccide i processi senza preavviso.
+  Future<void> flushTextCacheNow() async {
+    _textFlush?.cancel();
+    await _flushTextCache();
   }
 
   Future<void> _flushTextCache() async {
@@ -195,9 +215,23 @@ class AppServices {
     final toRemove = _removedTexts.toList();
     _dirtyTexts.clear();
     _removedTexts.clear();
-    if (toWrite.isNotEmpty) await _textStore.put(currentUid, toWrite);
+    _firstPendingWrite = null;
+    // Se la scrittura fallisce gli id tornano in coda: prima venivano svuotati
+    // prima dell'await e un errore li perdeva per sempre (una cancellazione
+    // persa lascia sul disco un contenuto revocato).
+    if (toWrite.isNotEmpty) {
+      final ok = await _textStore.put(currentUid, toWrite);
+      if (!ok) {
+        _dirtyTexts.addAll(toWrite.keys);
+        _firstPendingWrite ??= DateTime.now();
+      }
+    }
     if (toRemove.isNotEmpty) {
-      await _textStore.removeIds(currentUid, toRemove);
+      final ok = await _textStore.removeIds(currentUid, toRemove);
+      if (!ok) {
+        _removedTexts.addAll(toRemove);
+        _firstPendingWrite ??= DateTime.now();
+      }
     }
     // Se durante la scrittura si è usciti (o cambiato account), rimuovi ciò che
     // è appena stato scritto: un flush in volo non deve resuscitare l'archivio.
@@ -214,8 +248,18 @@ class AppServices {
       photoEcho.clear();
       _openedPhotoCache.clear();
       _readByConversation.clear();
+      // Anche le code: erano riferite all'account precedente, e una
+      // cancellazione rimasta in sospeso non deve andare perduta né essere
+      // applicata al nuovo account.
+      _textFlush?.cancel();
+      _dirtyTexts.clear();
+      _removedTexts.clear();
+      _firstPendingWrite = null;
     }
     _textCacheUid = currentUid;
+    // Elimina l'archivio a blob dei rilasci precedenti: restava sul dispositivo
+    // ancora decifrabile, e il logout non lo toccava più.
+    unawaited(_textStore.purgeLegacyBlob(currentUid));
     try {
       final stored = await _textStore.load(currentUid);
       // Non sovrascrivere ciò che è già stato decifrato in questa sessione.
@@ -278,7 +322,9 @@ class AppServices {
     }
     _setIdentity(await keyStore.load(currentUid));
     // Testi già decifrati in sessioni precedenti: riaprire le chat è immediato.
-    await _loadTextCache(currentUid);
+    // NON attende: con un archivio grande l'avvio resterebbe fermo a decifrare
+    // migliaia di righe. Finché non è pronto le bolle ricadono sul server.
+    unawaited(_loadTextCache(currentUid));
     // Timeout: se il server è lento, IdentityGate mostra un errore con
     // "Riprova" invece di restare all'infinito su "Carico l'identità…".
     myProfile =
@@ -606,15 +652,28 @@ class AppServices {
     _openedPhotoCache.remove(m.id);
   }
 
-  /// Toglie un testo dalla RAM E lo mette in coda per la cancellazione su
-  /// disco: se restasse nell'archivio locale, una revoca o un'eliminazione
-  /// tornerebbero leggibili al prossimo avvio.
+  /// Toglie un testo dalla RAM e lo cancella SUBITO dal disco.
+  ///
+  /// Volutamente non passa dal debounce: quello si riarma a ogni scrittura, e
+  /// una revoca rinviata (o perduta con la chiusura dell'app) lascerebbe il
+  /// contenuto nell'archivio, da cui tornerebbe leggibile al riavvio. Se la
+  /// cancellazione fallisce l'id resta in coda per un nuovo tentativo.
   bool _dropText(String messageId) {
     final had = _decryptedText.remove(messageId) != null;
     _dirtyTexts.remove(messageId);
     _removedTexts.add(messageId);
-    _scheduleTextFlush();
+    unawaited(_removeTextsNow());
     return had;
+  }
+
+  Future<void> _removeTextsNow() async {
+    final currentUid = client.auth.currentUser?.id;
+    if (currentUid == null || _textCacheUid != currentUid) return;
+    if (_removedTexts.isEmpty) return;
+    final toRemove = _removedTexts.toList();
+    _removedTexts.clear();
+    final ok = await _textStore.removeIds(currentUid, toRemove);
+    if (!ok) _removedTexts.addAll(toRemove); // riprovare al prossimo giro
   }
 
   /// Invalida il testo in cache (es. quando arriva una modifica dal mittente).
@@ -630,9 +689,13 @@ class AppServices {
       if (gone.isEmpty) return;
       var changed = false;
       for (final id in gone) {
-        if (_dropText(id)) changed = true;
         _openedPhotoCache.remove(id);
         photoEcho.remove(id);
+        // Solo ciò che è davvero in cache: accodare ogni id inattivo a ogni
+        // apertura di chat significava rifare N hash e N DELETE ogni volta.
+        if (_decryptedText.containsKey(id)) {
+          if (_dropText(id)) changed = true;
+        }
       }
       if (changed) {
         // Le bolle testo mostrano di nuovo lo stato "non disponibile".

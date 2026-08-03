@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sodium_libs/sodium_libs.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -15,12 +16,17 @@ import '../crypto/crypto_service.dart';
 /// quali i messaggi più vecchi sparivano dalla ricerca senza avvisare. Qui le
 /// scritture sono incrementali (una riga per messaggio) e non c'è tetto.
 ///
-/// Cosa si vede sul disco: NIENTE, a parte il numero di righe.
+/// Cosa NON si vede sul disco:
 ///  * `u` = hash con chiave dell'uid  → account non risalibile
 ///  * `k` = hash con chiave dell'id   → messaggio non risalibile
-///  * `v` = AEAD(id + testo)          → contenuto illeggibile
+///  * `v` = AEAD(id + testo), riempito a multipli di 256 byte → contenuto
+///    illeggibile e lunghezza del messaggio nascosta
 /// Nessun id in chiaro, nessun timestamp: per un'app che si traveste, un
 /// database con id e orari leggibili sarebbe già una confessione.
+///
+/// Cosa RESTA visibile senza la chiave (limiti noti, non nascondibili qui):
+/// il NUMERO di righe, quante ne ha ciascun account (valori `u` distinti) e la
+/// dimensione del file. Non il contenuto, non chi, non quando.
 ///
 /// La chiave sta nello storage sicuro (Keystore Android). Senza quella il file
 /// è inservibile.
@@ -102,7 +108,11 @@ class TextStore {
       final rows = await db.query('texts',
           columns: ['v'], where: 'u = ?', whereArgs: [await _uidKey(uid, key)]);
       final out = <String, String>{};
+      var i = 0;
       for (final r in rows) {
+        // Ogni tanto restituisce il controllo al loop degli eventi: con
+        // migliaia di righe, decifrarle tutte di fila bloccava i frame.
+        if (++i % 200 == 0) await Future<void>.delayed(Duration.zero);
         try {
           final blob = base64Decode(r['v'] as String);
           final plain = utf8.decode(_crypto.decryptContent(blob, key));
@@ -120,18 +130,30 @@ class TextStore {
     }
   }
 
+  /// Riempie il testo fino al multiplo di [_pad] byte: senza, la LUNGHEZZA del
+  /// valore cifrato rivelerebbe quella del messaggio (un "ok" e un paragrafo
+  /// sono distinguibili a occhio anche senza la chiave).
+  static const _pad = 256;
+
+  String _padded(String id, String text) {
+    final base = jsonEncode({'i': id, 't': text});
+    final target = ((base.length ~/ _pad) + 1) * _pad;
+    return jsonEncode({'i': id, 't': text, 'p': ' ' * (target - base.length)});
+  }
+
   /// Inserisce/aggiorna SOLO i messaggi passati (scrittura incrementale).
-  Future<void> put(String uid, Map<String, String> entries) async {
-    if (entries.isEmpty) return;
+  /// Ritorna false se la scrittura non è andata a buon fine, così chi chiama
+  /// può rimettere gli id in coda invece di perderli.
+  Future<bool> put(String uid, Map<String, String> entries) async {
+    if (entries.isEmpty) return true;
     try {
       final key = await _aeadKey();
       final db = await _open();
       final u = await _uidKey(uid, key);
       final batch = db.batch();
       for (final e in entries.entries) {
-        final payload = jsonEncode({'i': e.key, 't': e.value});
         final blob = _crypto.encryptWithKey(
-            Uint8List.fromList(utf8.encode(payload)), key);
+            Uint8List.fromList(utf8.encode(_padded(e.key, e.value))), key);
         batch.insert(
           'texts',
           {'u': u, 'k': _rowKey(uid, e.key, key), 'v': base64Encode(blob)},
@@ -139,15 +161,19 @@ class TextStore {
         );
       }
       await batch.commit(noResult: true);
+      return true;
     } catch (_) {
       // Archivio best-effort: un errore di scrittura non deve rompere la chat.
+      return false;
     }
   }
 
   /// Rimuove i testi indicati (revoca, eliminazione, modifica).
-  Future<void> removeIds(String uid, Iterable<String> messageIds) async {
+  /// Ritorna false se la cancellazione è fallita: chi chiama deve riprovare,
+  /// perché un contenuto revocato non può restare sul disco.
+  Future<bool> removeIds(String uid, Iterable<String> messageIds) async {
     final ids = messageIds.toList();
-    if (ids.isEmpty) return;
+    if (ids.isEmpty) return true;
     try {
       final key = await _aeadKey();
       final db = await _open();
@@ -158,6 +184,19 @@ class TextStore {
             where: 'u = ? and k = ?', whereArgs: [u, _rowKey(uid, id, key)]);
       }
       await batch.commit(noResult: true);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Cancella il vecchio archivio a blob (SharedPreferences) rimasto dai
+  /// rilasci precedenti. Senza questo resterebbe sul dispositivo, ancora
+  /// decifrabile con la stessa chiave, e nemmeno il logout lo toccherebbe.
+  Future<void> purgeLegacyBlob(String uid) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove('bruma_textcache_$uid');
     } catch (_) {}
   }
 

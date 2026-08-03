@@ -77,23 +77,28 @@ class TextStore {
     }
   }
 
-  Future<void> put(String uid, Map<String, String> entries) async {
-    if (entries.isEmpty) return;
+  Future<bool> put(String uid, Map<String, String> entries) async {
+    if (entries.isEmpty) return true;
     if (!_loaded) await load(uid);
     _all.addAll(entries);
-    await _write(uid);
+    return _write(uid);
   }
 
-  Future<void> removeIds(String uid, Iterable<String> messageIds) async {
+  Future<bool> removeIds(String uid, Iterable<String> messageIds) async {
     if (!_loaded) await load(uid);
     var changed = false;
     for (final id in messageIds) {
       if (_all.remove(id) != null) changed = true;
     }
-    if (changed) await _write(uid);
+    if (!changed) return true;
+    return _write(uid);
   }
 
-  Future<void> _write(String uid) async {
+  /// Qui il "blob legacy" È l'archivio corrente: niente da purgare.
+  /// Esiste solo perché l'API deve combaciare con quella su SQLite.
+  Future<void> purgeLegacyBlob(String uid) async {}
+
+  Future<bool> _write(String uid) async {
     try {
       var data = _all;
       if (data.length > maxEntries) {
@@ -109,7 +114,10 @@ class TextStore {
           Uint8List.fromList(utf8.encode(jsonEncode(data))), key);
       final p = await SharedPreferences.getInstance();
       await p.setString(_blobKey(uid), base64Encode(blob));
-    } catch (_) {}
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> clear(String uid) async {

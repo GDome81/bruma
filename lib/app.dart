@@ -58,6 +58,16 @@ class _BrumaAppState extends State<BrumaApp> with WidgetsBindingObserver {
     // senza PIN attivo, quindi prima dell'early-return sotto).
     if (state == AppLifecycleState.resumed) VersionCheck.checkNow();
     final s = AppServices.instance;
+    // Andando in background scrivi subito l'archivio testi in attesa: Android
+    // congela e uccide i processi senza preavviso, e una cancellazione rimasta
+    // in coda lascerebbe sul disco un contenuto revocato. Vale anche senza PIN,
+    // quindi prima dell'early-return sotto.
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      s.flushTextCacheNow();
+    }
     // Senza PIN l'app NON si nasconde (scelta dell'utente): la calcolatrice si
     // mostra solo col pulsante panic.
     if (!s.lockEnabled) return;
