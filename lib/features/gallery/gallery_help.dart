@@ -3,6 +3,47 @@ import 'package:flutter/material.dart';
 /// Testi della guida sulle gallerie, in UN SOLO posto: li usano sia i pannelli
 /// ⓘ dentro le schermate sia la sezione del tutorial, così non divergono.
 class GalleryHelp {
+  /// Testo introduttivo: in Bruma le foto stanno in posti diversi a seconda di
+  /// quanto sono "libere", e senza una frase di contesto non è intuibile.
+  static const intro =
+      'In Bruma una foto non sta in un posto solo: dipende da quanti limiti ha. '
+      'Ci sono tre raccolte, tutte separate per ogni chat, e ognuna risponde a '
+      'una domanda diversa.';
+
+  /// Le tre raccolte: cosa c'è dentro e a cosa servono.
+  static const collections = <(IconData, String, String)>[
+    (
+      Icons.collections_outlined,
+      'Galleria — "cosa possiamo rivedere sempre"',
+      'Contiene solo le foto SENZA limiti che hai salvato. Ci arrivano quando '
+          'chi le manda le rende disponibili e tu le aggiungi. Si aprono quante '
+          'volte vuoi. Menu ⋮ → Galleria.',
+    ),
+    (
+      Icons.lock_clock,
+      'Contenuti a tempo — "cosa sta per scadere"',
+      'Le foto che hanno ancora un credito di aperture o una scadenza. Due '
+          'schede: "Le mie" (quelle che hai inviato, con quante aperture '
+          'restano all\'altro) e "Ricevute" (quelle che puoi ancora aprire, con '
+          'quante ne restano a te). Menu ⋮ → Contenuti a tempo.',
+    ),
+    (
+      Icons.star_border,
+      'Preferiti — "cosa voglio ritrovare"',
+      'Messaggi e foto che hai segnato, con una nota facoltativa per '
+          'ricordarti cosa erano: utile per i contenuti protetti che non si '
+          'possono rivedere. Toccandone uno torni a quel punto della chat. '
+          'Menu ⋮ → Preferiti.',
+    ),
+    (
+      Icons.touch_app_outlined,
+      'Come si usano',
+      'Tutte le azioni partono dal TIENI PREMUTO: su una foto in chat per '
+          'renderla disponibile, salvarla o revocarla; su una foto nelle '
+          'raccolte per riabilitarla, cancellarla o saltare al messaggio.',
+    ),
+  ];
+
   /// Un punto della guida: titolo, spiegazione, icona.
   static const galleryStates = <(IconData, String, String)>[
     (
@@ -74,6 +115,7 @@ Future<void> showGalleryHelp(
   BuildContext context, {
   required String title,
   required List<(IconData, String, String)> sections,
+  String? intro,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -90,6 +132,14 @@ Future<void> showGalleryHelp(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(title, style: Theme.of(ctx).textTheme.titleLarge),
+                if (intro != null) ...[
+                  const SizedBox(height: 10),
+                  Text(intro,
+                      style: TextStyle(
+                          fontSize: 13.5,
+                          height: 1.35,
+                          color: cs.onSurfaceVariant)),
+                ],
                 const SizedBox(height: 16),
                 for (final s in sections) ...[
                   Row(

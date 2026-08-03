@@ -130,8 +130,10 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen>
             icon: const Icon(Icons.info_outline),
             onPressed: () => showGalleryHelp(
               context,
-              title: 'Contenuti a tempo',
+              title: 'Le raccolte di Bruma',
+              intro: GalleryHelp.intro,
               sections: [
+                ...GalleryHelp.collections,
                 ...GalleryHelp.counters,
                 ...GalleryHelp.actions,
               ],
@@ -562,51 +564,91 @@ class _ReceivedTileState extends State<_ReceivedTile> {
     final a = widget.access;
     final cached = _cached;
     final expires = a?.access.expiresAt;
-    return ListTile(
-      leading: SizedBox(
-        width: 48,
-        height: 48,
-        child: cached != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: WatermarkOverlay(
-                  dense: true,
-                  child: Image.memory(cached, fit: BoxFit.cover),
-                ),
-              )
-            : Container(
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.lock, color: cs.onSurfaceVariant),
-              ),
-      ),
-      title: Text(a?.statusLabel ?? 'Foto protetta',
-          style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text([
-        formatTimestamp(widget.message.createdAt),
-        if (expires != null) 'scade ${formatTimestamp(expires)}',
-      ].join(' · ')),
-      trailing: _opening
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2))
-          : Row(
-              mainAxisSize: MainAxisSize.min,
+    // NB: layout esplicito e non ListTile+trailing. Mettendo i pulsanti nel
+    // `trailing` questi si prendevano tutta la larghezza e il testo veniva
+    // schiacciato a un carattere per riga.
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: cached != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: WatermarkOverlay(
+                      dense: true,
+                      child: Image.memory(cached, fit: BoxFit.cover),
+                    ),
+                  )
+                : Container(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.lock, color: cs.onSurfaceVariant),
+                  ),
+          ),
+          const SizedBox(width: 12),
+          // Expanded: il testo prende lo spazio che resta, mai meno.
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                IconButton(
-                  tooltip: 'Vai al messaggio in chat',
-                  icon: const Icon(Icons.forum_outlined),
-                  onPressed: widget.onJump,
+                Text(
+                  a?.statusLabel ?? 'Foto protetta',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-                FilledButton.tonal(
-                  onPressed: _open,
-                  child: Text(cached != null ? 'Rivedi' : 'Apri'),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    formatTimestamp(widget.message.createdAt),
+                    if (expires != null) 'scade ${formatTimestamp(expires)}',
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12, color: cs.onSurfaceVariant),
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 8),
+          if (_opening)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else ...[
+            FilledButton.tonal(
+              onPressed: _open,
+              child: Text(cached != null ? 'Rivedi' : 'Apri'),
+            ),
+            // Menu compatto: un secondo pulsante a tutta larghezza era ciò che
+            // rubava lo spazio al testo.
+            PopupMenuButton<String>(
+              tooltip: 'Altro',
+              onSelected: (_) => widget.onJump(),
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'jump',
+                  child: ListTile(
+                    leading: Icon(Icons.forum_outlined),
+                    title: Text('Vai al messaggio in chat'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

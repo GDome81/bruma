@@ -93,8 +93,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
             icon: const Icon(Icons.info_outline),
             onPressed: () => showGalleryHelp(
               context,
-              title: 'La galleria della chat',
+              title: 'Le raccolte di Bruma',
+              intro: GalleryHelp.intro,
               sections: [
+                ...GalleryHelp.collections,
                 ...GalleryHelp.galleryStates,
                 ...GalleryHelp.actions,
               ],
