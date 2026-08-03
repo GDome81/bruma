@@ -2,6 +2,52 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/models.dart';
 
+/// Statistiche di una conversazione, contate SUL SERVER (vedi RPC
+/// `conversation_stats`): contare lato client significava scaricare le righe, e
+/// il server ne restituisce al massimo 1000 → conteggi bloccati a 1000.
+class ConversationStats {
+  ConversationStats({
+    required this.sent,
+    required this.received,
+    required this.sentPhotos,
+    required this.receivedPhotos,
+    required this.deniedPhoto,
+    required this.viewsByPhoto,
+  });
+
+  final int sent;
+  final int received;
+  final int sentPhotos;
+  final int receivedPhotos;
+  final int deniedPhoto;
+
+  /// Visualizzazioni per foto (solo le MIE foto, aperture del destinatario).
+  final Map<String, int> viewsByPhoto;
+
+  int get totalPhotoViews =>
+      viewsByPhoto.values.fold<int>(0, (a, b) => a + b);
+
+  factory ConversationStats.fromJson(Map<String, dynamic> j) {
+    final raw = j['views'];
+    final views = <String, int>{};
+    if (raw is Map) {
+      for (final e in raw.entries) {
+        final n = (e.value as num?)?.toInt();
+        if (n != null) views[e.key as String] = n;
+      }
+    }
+    int asInt(Object? v) => (v as num?)?.toInt() ?? 0;
+    return ConversationStats(
+      sent: asInt(j['sent']),
+      received: asInt(j['received']),
+      sentPhotos: asInt(j['sent_photos']),
+      receivedPhotos: asInt(j['received_photos']),
+      deniedPhoto: asInt(j['denied_photo']),
+      viewsByPhoto: views,
+    );
+  }
+}
+
 /// Statistiche di apertura (fonte: open_events). Visibili al mittente per i
 /// propri messaggi (garantito dalla RLS lato server).
 class StatsRepository {
@@ -50,6 +96,13 @@ class StatsRepository {
           .limit(1000);
       return rows.map((r) => r['message_id'] as String).toSet();
     }
+  }
+
+  /// Conteggi + visualizzazioni per foto in UNA richiesta, calcolati in SQL.
+  Future<ConversationStats> conversationStats(String conversationId) async {
+    final res = await _client.rpc('conversation_stats',
+        params: {'p_conversation_id': conversationId});
+    return ConversationStats.fromJson(Map<String, dynamic>.from(res as Map));
   }
 
   Future<List<OpenEvent>> eventsForMessage(String messageId) async {

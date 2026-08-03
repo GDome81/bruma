@@ -80,6 +80,50 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<_StatsData> _load() async {
+    try {
+      return await _loadViaRpc();
+    } catch (_) {
+      // Migration conversation_stats non ancora applicata: percorso vecchio
+      // (conteggi lato client, quindi troncati a 1000 righe dal server).
+      return _loadLegacy();
+    }
+  }
+
+  /// Conteggi calcolati in SQL: esatti anche su chat con molte migliaia di
+  /// messaggi, dove il conteggio lato client si fermava a 1000.
+  Future<_StatsData> _loadViaRpc() async {
+    final s = await AppServices.instance.stats
+        .conversationStats(widget.conversationId);
+    // In classifica solo le foto aperte almeno una volta: mi bastano quelle.
+    final ids = s.viewsByPhoto.entries.where((e) => e.value > 0).toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    // Tetto di 100: la classifica si sfoglia 5 alla volta, e un `in.(...)` con
+    // troppi id genera un URL che il server rifiuta.
+    final top = ids.take(100).map((e) => e.key).toList();
+    final photos = top.isEmpty
+        ? <Message>[]
+        : await AppServices.instance.messages.getByIds(top);
+    photos.sort((a, b) {
+      final byViews = (s.viewsByPhoto[b.id] ?? 0)
+          .compareTo(s.viewsByPhoto[a.id] ?? 0);
+      if (byViews != 0) return byViews;
+      return b.createdAt.compareTo(a.createdAt);
+    });
+    return _StatsData(
+      counts: (
+        sent: s.sent,
+        received: s.received,
+        sentPhotos: s.sentPhotos,
+        receivedPhotos: s.receivedPhotos,
+      ),
+      rankedPhotos: photos,
+      viewsByPhoto: s.viewsByPhoto,
+      totalPhotoViews: s.totalPhotoViews,
+      deniedPhoto: s.deniedPhoto,
+    );
+  }
+
+  Future<_StatsData> _loadLegacy() async {
     final messages = AppServices.instance.messages;
     final stats = AppServices.instance.stats;
     // Avvia in parallelo.
