@@ -901,7 +901,7 @@ class _ConversationScreenState extends State<ConversationScreen>
                 _menuItem('gallery', Icons.collections_outlined, 'Galleria'),
                 _menuItem('stats', Icons.bar_chart, 'Statistiche'),
                 _menuItem('favorites', Icons.star_border, 'Preferiti'),
-                _menuItem('secret', Icons.lock_outline, 'Galleria segreta'),
+                _menuItem('secret', Icons.lock_clock, 'Contenuti a tempo'),
                 _menuItem(
                     'protection', Icons.shield_outlined, 'Protezione'),
                 const PopupMenuDivider(),

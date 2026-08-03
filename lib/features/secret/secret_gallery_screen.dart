@@ -5,18 +5,21 @@ import 'package:flutter/material.dart';
 import '../../core/app_services.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
+import '../../core/supabase/access_repository.dart';
 import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
+import '../gallery/gallery_help.dart';
 import '../viewer/viewer_screen.dart';
 
-/// Galleria "segreta" di UNA chat: raccoglie AUTOMATICAMENTE tutte le foto che
-/// HO INVIATO in questa conversazione e che sono ancora "sotto controllo"
-/// (protette/limitate, cioè non rese senza limiti in galleria). Serve al
-/// mittente per rivedere tutto ciò che ha condiviso.
+/// Contenuti "a tempo" di UNA chat, in due schede:
 ///
-/// Di default le anteprime sono NASCOSTE (placeholder + data); un tasto
-/// "scopri/nascondi" le rivela. Sono foto mie → si decifrano dalla mia copia
-/// senza consumare aperture.
+///  * **Le mie** — le foto che HO INVIATO e che hanno ancora dei limiti, con
+///    quante aperture restano all'ALTRA persona. Anteprime gratuite: apro la
+///    mia copia, che non ha protezione.
+///  * **Ricevute** — le foto che POSSO ANCORA APRIRE, con quante aperture
+///    restano A ME. Qui NIENTE anteprime automatiche: ogni decifratura consuma
+///    una delle mie aperture, quindi si vede un lucchetto e si apre solo su
+///    richiesta esplicita.
 class SecretGalleryScreen extends StatefulWidget {
   const SecretGalleryScreen({
     super.key,
@@ -36,33 +39,212 @@ class SecretGalleryScreen extends StatefulWidget {
   State<SecretGalleryScreen> createState() => _SecretGalleryScreenState();
 }
 
-class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
-  late Future<List<Message>> _future;
+class _Data {
+  _Data(this.mine, this.received, this.accessById);
+
+  /// Mie foto ancora sotto limiti (le più recenti prima).
+  final List<Message> mine;
+
+  /// Foto ricevute che posso ancora aprire.
+  final List<Message> received;
+
+  /// Stato di accesso per id messaggio (assente se la RPC non è disponibile).
+  final Map<String, PhotoAccess> accessById;
+}
+
+class _SecretGalleryScreenState extends State<SecretGalleryScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+  late Future<_Data> _future;
   bool _revealed = false;
   final Set<String> _reopened = {}; // evita avvisi doppi in chat
 
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 2, vsync: this);
     SecureScreenGuard.acquire();
     _future = _load();
   }
 
   @override
   void dispose() {
+    _tabs.dispose();
     SecureScreenGuard.release();
     super.dispose();
   }
 
-  Future<List<Message>> _load() async {
-    final mine = await AppServices.instance.messages
-        .myPhotoMessages(widget.conversationId); // già dal più recente
-    // Solo quelle ancora sotto controllo di visualizzazioni: le foto rese
-    // "senza limiti" in galleria stanno nella galleria normale.
-    return mine.where((m) => !m.galleryOffered).toList();
+  Future<_Data> _load() async {
+    final svc = AppServices.instance;
+    final me = svc.uid;
+
+    // Stato di accesso di tutte le foto in una richiesta. Se la migration non
+    // è ancora applicata si prosegue senza contatori.
+    var accessById = <String, PhotoAccess>{};
+    try {
+      final list = await svc.access.galleryAccess(widget.conversationId);
+      accessById = {for (final a in list) a.messageId: a};
+    } catch (_) {}
+
+    // Le mie: già disponibili senza contatori (dalla lista messaggi).
+    final mineAll = await svc.messages.myPhotoMessages(widget.conversationId);
+    final mine = mineAll.where((m) {
+      if (m.galleryOffered) return false; // quelle "senza limiti" → Galleria
+      final a = accessById[m.id];
+      // Senza contatori mostro tutto; con i contatori escludo le revocate.
+      return a == null || a.access.active;
+    }).toList();
+
+    // Ricevute ancora apribili: serve la RPC, perché lo stato di accesso non è
+    // deducibile dal solo messaggio.
+    final received = <Message>[];
+    if (accessById.isNotEmpty) {
+      final openableIds = [
+        for (final a in accessById.values)
+          if (!a.mine && !a.galleryOffered && a.access.isOpenable) a.messageId,
+      ];
+      if (openableIds.isNotEmpty) {
+        final msgs = await svc.messages.getByIds(openableIds.take(200).toList());
+        msgs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        received.addAll(msgs.where((m) => m.senderId != me));
+      }
+    }
+    return _Data(mine, received, accessById);
   }
 
   void _reload() => setState(() => _future = _load());
+
+  void _snack(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Contenuti a tempo · ${widget.other.displayName}'),
+        actions: [
+          IconButton(
+            tooltip: 'Come funziona',
+            icon: const Icon(Icons.info_outline),
+            onPressed: () => showGalleryHelp(
+              context,
+              title: 'Contenuti a tempo',
+              sections: [
+                ...GalleryHelp.counters,
+                ...GalleryHelp.actions,
+              ],
+            ),
+          ),
+          // Lo "scopri" vale solo per le MIE foto: le ricevute non hanno
+          // anteprima per non consumare aperture.
+          if (_tabs.index == 0)
+            IconButton(
+              tooltip: _revealed ? 'Nascondi' : 'Scopri',
+              icon: Icon(_revealed
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined),
+              onPressed: () => setState(() => _revealed = !_revealed),
+            ),
+        ],
+        bottom: TabBar(
+          controller: _tabs,
+          onTap: (_) => setState(() {}), // aggiorna le azioni in barra
+          tabs: const [
+            Tab(text: 'Le mie'),
+            Tab(text: 'Ricevute'),
+          ],
+        ),
+      ),
+      body: FutureBuilder<_Data>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done && !snap.hasData) {
+            return const LoadingView();
+          }
+          if (snap.hasError) {
+            return ErrorView(message: 'Errore: ${snap.error}', onRetry: _reload);
+          }
+          final d = snap.data!;
+          return TabBarView(
+            controller: _tabs,
+            children: [_mineTab(d), _receivedTab(d)],
+          );
+        },
+      ),
+    );
+  }
+
+  // --- Scheda "Le mie" -----------------------------------------------------
+
+  Widget _mineTab(_Data d) {
+    if (d.mine.isEmpty) {
+      return const EmptyView(
+        icon: Icons.lock_outline,
+        title: 'Niente a tempo',
+        subtitle:
+            'Qui appaiono le foto che hai inviato in questa chat e che hanno '
+            'ancora dei limiti, con quante aperture restano all\'altra persona. '
+            'Tocca "scopri" per vedere le anteprime.',
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(3),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 3,
+        mainAxisSpacing: 3,
+      ),
+      itemCount: d.mine.length,
+      itemBuilder: (_, i) {
+        final m = d.mine[i];
+        return _MineTile(
+          key: ValueKey(m.id),
+          message: m,
+          revealed: _revealed,
+          status: d.accessById[m.id]?.statusLabel,
+          onLongPress: () => _actions(m),
+        );
+      },
+    );
+  }
+
+  // --- Scheda "Ricevute" ---------------------------------------------------
+
+  Widget _receivedTab(_Data d) {
+    if (d.received.isEmpty) {
+      final noRpc = d.accessById.isEmpty;
+      return EmptyView(
+        icon: Icons.mark_email_unread_outlined,
+        title: noRpc ? 'Contatori non disponibili' : 'Niente da aprire',
+        subtitle: noRpc
+            ? 'Per questa sezione serve la migration gallery_access su '
+                'Supabase: senza, l\'app non sa quante aperture ti restano.'
+            : 'Non ci sono foto ricevute che puoi ancora aprire. Quelle senza '
+                'limiti le trovi nella Galleria della chat.',
+      );
+    }
+    return ListView.separated(
+      itemCount: d.received.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (_, i) {
+        final m = d.received[i];
+        return _ReceivedTile(
+          key: ValueKey(m.id),
+          message: m,
+          access: d.accessById[m.id],
+          onOpened: _reload,
+          onJump: () {
+            Navigator.of(context).pop();
+            widget.onJump(m.id);
+          },
+        );
+      },
+    );
+  }
+
+  // --- Azioni sulle mie foto ----------------------------------------------
 
   Future<void> _actions(Message m) async {
     final action = await showModalBottomSheet<String>(
@@ -74,8 +256,8 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
             ListTile(
               leading: const Icon(Icons.forum_outlined),
               title: const Text('Vai al messaggio in chat'),
-              subtitle:
-                  const Text('Apre la chat nel punto in cui hai inviato la foto.'),
+              subtitle: const Text(
+                  'Apre la chat nel punto in cui hai inviato la foto.'),
               onTap: () => Navigator.pop(ctx, 'jump'),
             ),
             ListTile(
@@ -100,7 +282,6 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
     );
     if (!mounted) return;
     if (action == 'jump') {
-      // Chiudi la galleria e chiedi alla chat sottostante di saltare alla foto.
       Navigator.of(context).pop();
       widget.onJump(m.id);
     } else if (action == 'reopen') {
@@ -135,21 +316,10 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
     try {
       await AppServices.instance.deleteMessageForEveryone(m);
       _reload();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Foto cancellata definitivamente.')));
-      }
+      _snack('Foto cancellata definitivamente.');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Cancellazione non riuscita: $e')));
-      }
+      _snack('Cancellazione non riuscita: $e');
     }
-  }
-
-  void _snack(String m) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
   /// Riabilita la STESSA foto (rinnovo dei limiti), senza inviarne una copia.
@@ -159,8 +329,6 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
       return;
     }
     final access = AppServices.instance.access;
-    // Revocata? revoke_message disattiva TUTTE le copie e cancella il blob:
-    // rinnovare non la riporterebbe in vita (il file cifrato non c'è più).
     try {
       final mineAccess = await access.getMyAccess(m.id);
       if (mineAccess != null && !mineAccess.active) {
@@ -168,8 +336,6 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
             'essere riabilitata. Puoi solo inviarne una nuova.');
         return;
       }
-      // Già apribile dall'altro → nessun rinnovo necessario (evita un avviso
-      // "foto riaperta" inutile in chat).
       final theirs = await access.getRecipientAccess(m.id);
       if (theirs != null && theirs.isOpenable) {
         _snack('Questa foto è già apribile: nessun rinnovo necessario.');
@@ -204,84 +370,35 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen> {
       await AppServices.instance.reopenPhotoInChat(m);
       _reopened.add(m.id);
       _snack('Foto di nuovo apribile nella chat.');
+      _reload();
     } catch (e) {
       _snack('Riabilitazione non riuscita: $e');
     }
   }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Segreti · ${widget.other.displayName}'),
-        actions: [
-          IconButton(
-            tooltip: _revealed ? 'Nascondi' : 'Scopri',
-            icon: Icon(_revealed
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined),
-            onPressed: () => setState(() => _revealed = !_revealed),
-          ),
-        ],
-      ),
-      body: FutureBuilder<List<Message>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done && !snap.hasData) {
-            return const LoadingView();
-          }
-          if (snap.hasError) {
-            return ErrorView(message: 'Errore: ${snap.error}', onRetry: _reload);
-          }
-          final items = snap.data ?? [];
-          if (items.isEmpty) {
-            return const EmptyView(
-              icon: Icons.lock_outline,
-              title: 'Niente di segreto',
-              subtitle:
-                  'Qui appaiono automaticamente le foto che hai inviato in '
-                  'questa chat e che sono ancora sotto controllo di '
-                  'visualizzazioni. Tocca "scopri" per vederle.',
-            );
-          }
-          return GridView.builder(
-            padding: const EdgeInsets.all(3),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 3,
-              mainAxisSpacing: 3,
-            ),
-            itemCount: items.length,
-            itemBuilder: (_, i) => _SecretTile(
-              key: ValueKey(items[i].id),
-              message: items[i],
-              revealed: _revealed,
-              onLongPress: () => _actions(items[i]),
-            ),
-          );
-        },
-      ),
-    );
-  }
 }
 
-class _SecretTile extends StatefulWidget {
-  const _SecretTile({
+// ---------------------------------------------------------------------------
+// Tile "Le mie": anteprima gratuita (copia del mittente) + stato
+// ---------------------------------------------------------------------------
+class _MineTile extends StatefulWidget {
+  const _MineTile({
     super.key,
     required this.message,
     required this.revealed,
+    required this.status,
     required this.onLongPress,
   });
 
   final Message message;
   final bool revealed;
+  final String? status;
   final VoidCallback onLongPress;
 
   @override
-  State<_SecretTile> createState() => _SecretTileState();
+  State<_MineTile> createState() => _MineTileState();
 }
 
-class _SecretTileState extends State<_SecretTile> {
+class _MineTileState extends State<_MineTile> {
   Uint8List? _bytes;
 
   @override
@@ -291,7 +408,7 @@ class _SecretTileState extends State<_SecretTile> {
   }
 
   @override
-  void didUpdateWidget(covariant _SecretTile old) {
+  void didUpdateWidget(covariant _MineTile old) {
     super.didUpdateWidget(old);
     if (widget.revealed && !old.revealed) _load();
   }
@@ -302,9 +419,7 @@ class _SecretTileState extends State<_SecretTile> {
       // Foto mia: si decifra dalla mia copia (protezione off) senza consumare.
       final b = await AppServices.instance.openPhotoBytesCached(widget.message);
       if (mounted) setState(() => _bytes = b);
-    } catch (_) {
-      // resta il placeholder
-    }
+    } catch (_) {}
   }
 
   void _open() {
@@ -321,30 +436,176 @@ class _SecretTileState extends State<_SecretTile> {
     final showImage = widget.revealed && _bytes != null;
     return GestureDetector(
       onTap: showImage ? _open : null,
-      onLongPress: widget.onLongPress, // tieni premuto → reinvia / cancella
-      child: showImage
-          ? WatermarkOverlay(
+      onLongPress: widget.onLongPress,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (showImage)
+            WatermarkOverlay(
               dense: true,
               child: Image.memory(_bytes!,
                   fit: BoxFit.cover, cacheWidth: 360, gaplessPlayback: true),
             )
-          : Container(
+          else
+            Container(
               color: cs.surfaceContainerHighest,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                      widget.revealed ? Icons.hourglass_empty : Icons.lock,
-                      color: cs.onSurfaceVariant,
-                      size: 22),
-                  const SizedBox(height: 4),
-                  Text(
-                    formatTimestamp(widget.message.createdAt),
-                    style:
-                        TextStyle(color: cs.onSurfaceVariant, fontSize: 10),
-                  ),
-                ],
+              child: Center(
+                child: Icon(
+                    widget.revealed ? Icons.hourglass_empty : Icons.lock,
+                    color: cs.onSurfaceVariant,
+                    size: 22),
               ),
+            ),
+          // Stato: quante aperture restano ALL'ALTRO (o revocata/scaduta).
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              color: Colors.black54,
+              child: Text(
+                widget.status ?? formatTimestamp(widget.message.createdAt),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 9),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tile "Ricevute": nessuna anteprima automatica (aprire consuma un'apertura)
+// ---------------------------------------------------------------------------
+class _ReceivedTile extends StatefulWidget {
+  const _ReceivedTile({
+    super.key,
+    required this.message,
+    required this.access,
+    required this.onOpened,
+    required this.onJump,
+  });
+
+  final Message message;
+  final PhotoAccess? access;
+  final VoidCallback onOpened;
+  final VoidCallback onJump;
+
+  @override
+  State<_ReceivedTile> createState() => _ReceivedTileState();
+}
+
+class _ReceivedTileState extends State<_ReceivedTile> {
+  bool _opening = false;
+
+  /// Se la foto è già stata aperta in questa sessione i byte sono in RAM:
+  /// mostrarla non costa un'altra apertura.
+  Uint8List? get _cached =>
+      AppServices.instance.cachedPhotoBytes(widget.message.id);
+
+  Future<void> _open() async {
+    final cached = _cached;
+    if (cached != null) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ViewerScreen(bytes: cached, secure: true),
+      ));
+      return;
+    }
+    final a = widget.access?.access;
+    final left = a == null || a.unlimitedOpens ? null : a.remainingOpens;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Aprire la foto?'),
+        content: Text(left == null
+            ? 'Aprirla consuma una delle tue aperture.'
+            : 'Aprirla consuma una delle tue aperture: te ne '
+                '${left == 1 ? "resta 1" : "restano $left"}.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annulla')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Apri')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _opening = true);
+    try {
+      final bytes =
+          await AppServices.instance.openPhotoBytesCached(widget.message);
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ViewerScreen(bytes: bytes, secure: true),
+      ));
+      widget.onOpened(); // i contatori sono cambiati
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Impossibile aprire: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final a = widget.access;
+    final cached = _cached;
+    final expires = a?.access.expiresAt;
+    return ListTile(
+      leading: SizedBox(
+        width: 48,
+        height: 48,
+        child: cached != null
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: WatermarkOverlay(
+                  dense: true,
+                  child: Image.memory(cached, fit: BoxFit.cover),
+                ),
+              )
+            : Container(
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.lock, color: cs.onSurfaceVariant),
+              ),
+      ),
+      title: Text(a?.statusLabel ?? 'Foto protetta',
+          style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text([
+        formatTimestamp(widget.message.createdAt),
+        if (expires != null) 'scade ${formatTimestamp(expires)}',
+      ].join(' · ')),
+      trailing: _opening
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Vai al messaggio in chat',
+                  icon: const Icon(Icons.forum_outlined),
+                  onPressed: widget.onJump,
+                ),
+                FilledButton.tonal(
+                  onPressed: _open,
+                  child: Text(cached != null ? 'Rivedi' : 'Apri'),
+                ),
+              ],
             ),
     );
   }

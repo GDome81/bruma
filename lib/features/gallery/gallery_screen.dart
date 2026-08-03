@@ -6,6 +6,7 @@ import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
 import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
+import 'gallery_help.dart';
 
 /// Galleria per-chat: le foto "senza limiti" che l'utente ha salvato in questa
 /// conversazione. Sono segnalibri: la foto resta cifrata su Storage e si apre
@@ -87,6 +88,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
       appBar: AppBar(
         title: Text('Galleria · ${widget.title}'),
         actions: [
+          IconButton(
+            tooltip: 'Come funziona',
+            icon: const Icon(Icons.info_outline),
+            onPressed: () => showGalleryHelp(
+              context,
+              title: 'La galleria della chat',
+              sections: [
+                ...GalleryHelp.galleryStates,
+                ...GalleryHelp.actions,
+              ],
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.collections_bookmark_outlined),
             tooltip: 'Le mie foto disponibili',

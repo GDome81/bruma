@@ -3,6 +3,44 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
 import 'key_request_exception.dart';
 
+/// Stato di accesso di una foto più il contesto che serve alle gallerie:
+/// se l'ho inviata io e se è stata offerta come "senza limiti".
+/// Le regole (aperture rimaste, scadenza, apribilità) restano quelle di
+/// [MessageAccess]: qui non si duplica nulla.
+class PhotoAccess {
+  PhotoAccess({
+    required this.access,
+    required this.mine,
+    required this.galleryOffered,
+  });
+
+  final MessageAccess access;
+
+  /// Vero se la foto l'ho inviata io (quindi `access` è la riga dell'altro).
+  final bool mine;
+  final bool galleryOffered;
+
+  String get messageId => access.messageId;
+
+  /// Etichetta dello stato EFFETTIVO. Il solo numero di aperture ingannerebbe:
+  /// 3 aperture su una foto scaduta o revocata valgono zero.
+  String get statusLabel {
+    if (!access.active) return 'Revocata';
+    if (galleryOffered || !access.protectionEnabled) return 'Senza limiti';
+    if (access.isExpired) return 'Scaduta';
+    if (access.unlimitedOpens) return 'Aperture illimitate';
+    final left = access.remainingOpens;
+    if (left <= 0) return 'Aperture esaurite';
+    return left == 1 ? '1 apertura rimasta' : '$left aperture rimaste';
+  }
+
+  factory PhotoAccess.fromMap(Map<String, dynamic> m) => PhotoAccess(
+        access: MessageAccess.fromMap(m),
+        mine: (m['mine'] ?? false) as bool,
+        galleryOffered: (m['gallery_offered'] ?? false) as bool,
+      );
+}
+
 /// Gestione dell'apertura controllata e della revoca.
 class AccessRepository {
   AccessRepository(this._client);
@@ -56,6 +94,19 @@ class AccessRepository {
       map[a.messageId] = a;
     }
     return map;
+  }
+
+  /// Stato di accesso di tutte le foto della conversazione, in UNA query:
+  /// per le mie foto la riga della CONTROPARTE (quante aperture le restano),
+  /// per quelle ricevute la MIA riga (quante ne restano a me).
+  Future<List<PhotoAccess>> galleryAccess(String conversationId) async {
+    final res = await _client.rpc('gallery_access',
+        params: {'p_conversation_id': conversationId});
+    final list = (res as List<dynamic>?) ?? const [];
+    return [
+      for (final r in list)
+        PhotoAccess.fromMap(Map<String, dynamic>.from(r as Map)),
+    ];
   }
 
   /// Ids dei messaggi di questa conversazione che per ME non sono più apribili

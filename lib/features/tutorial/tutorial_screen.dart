@@ -66,6 +66,24 @@ class _TutorialScreenState extends State<TutorialScreen> {
           '• Spunte: 1 grigia = in invio, 2 grigie = inviato, 3 blu = letto.',
     ),
     _Slide(
+      icon: Icons.collections_outlined,
+      title: 'Gallerie e contenuti a tempo',
+      body:
+          'Una foto può stare in tre stati:\n'
+          '• Protetta — ha aperture e/o scadenza; finito il credito non si '
+          'apre più.\n'
+          '• Disponibile — il mittente l\'ha resa senza limiti.\n'
+          '• In galleria — una disponibile che hai salvato (è un segnalibro, '
+          'non una copia sul telefono).\n\n'
+          'Dal menu ⋮ della chat: "Galleria" per quelle senza limiti, '
+          '"Contenuti a tempo" per quelle con un credito — scheda "Le mie" '
+          '(quante aperture restano all\'altro) e "Ricevute" (quante ne '
+          'restano a te).\n\n'
+          'Attenzione: "Revoca" CANCELLA la foto per sempre; "Togli dalla '
+          'galleria" no, la riporta solo a protetta.\n\n'
+          'In ogni galleria l\'icona ⓘ spiega la schermata.',
+    ),
+    _Slide(
       icon: Icons.vpn_key_outlined,
       warn: true,
       title: 'Fai il backup dell\'identità',
