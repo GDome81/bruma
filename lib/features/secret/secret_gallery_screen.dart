@@ -6,6 +6,7 @@ import '../../core/app_services.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
 import '../../core/supabase/access_repository.dart';
+import '../../shared/theme.dart';
 import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
 import '../gallery/gallery_help.dart';
@@ -636,6 +637,9 @@ class _ReceivedTileState extends State<_ReceivedTile> {
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2))
           : FilledButton.tonal(
+              // Senza questo stile il tema impone larghezza minima infinita e
+              // il pulsante si prende tutta la riga (data e aperture sparivano).
+              style: compactFilledStyle(),
               onPressed: _open,
               child: Text(cached != null ? 'Rivedi' : 'Apri'),
             ),

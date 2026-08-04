@@ -25,6 +25,10 @@ class BrumaTheme {
       inputDecorationTheme: const InputDecorationTheme(
         border: OutlineInputBorder(),
       ),
+      // ATTENZIONE: Size.fromHeight(48) è Size(double.infinity, 48), cioè
+      // larghezza minima INFINITA: tutti i FilledButton sono a tutta larghezza.
+      // Voluto per i pulsanti principali di form e dialoghi. Per un pulsante
+      // dentro una riga usa [compactFilledStyle], altrimenti si mangia la riga.
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(48),
@@ -33,3 +37,12 @@ class BrumaTheme {
     );
   }
 }
+
+/// Pulsante IN LINEA (dentro una riga di lista, accanto a del testo).
+/// Annulla la larghezza minima infinita imposta dal tema: senza questo un
+/// FilledButton occupa tutta la riga e il testo accanto scompare.
+ButtonStyle compactFilledStyle() => FilledButton.styleFrom(
+      minimumSize: const Size(0, 38),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
