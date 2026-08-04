@@ -280,8 +280,19 @@ class _ConversationScreenState extends State<ConversationScreen>
     try {
       final ids = await AppServices.instance.stats
           .readMessageIds(widget.conversationId);
-      if (mounted) {
-        AppServices.instance.setReadReceipts(widget.conversationId, ids);
+      if (!mounted) return;
+      AppServices.instance.setReadReceipts(widget.conversationId, ids);
+      // Soglia: il mio messaggio più recente che risulta letto. Tutto ciò che
+      // lo precede è considerato letto anche se l'app dell'altro non ha mai
+      // decifrato quella singola bolla (vedi isReadUpTo).
+      final me = AppServices.instance.uid;
+      DateTime? wm;
+      for (final m in _messages) {
+        if (m.senderId != me || !ids.contains(m.id)) continue;
+        if (wm == null || m.createdAt.isAfter(wm)) wm = m.createdAt;
+      }
+      if (wm != null) {
+        AppServices.instance.setReadWatermark(widget.conversationId, wm);
       }
     } catch (_) {}
   }

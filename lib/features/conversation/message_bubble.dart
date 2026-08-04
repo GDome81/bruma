@@ -871,7 +871,15 @@ class _ReadReceiptState extends State<_ReadReceipt> {
     // "Letto" = il destinatario ha un evento 'granted'. Lo stato arriva
     // dall'insieme caricato una volta sola dalla conversazione: nessuna
     // richiesta al server per singola bolla.
-    final read = AppServices.instance.isReadByRecipient(widget.message.id);
+    final m = widget.message;
+    final svc = AppServices.instance;
+    // Per i TESTI vale anche la soglia: se l'altro ha letto un mio messaggio
+    // più recente, era in chat oltre questo punto. Senza, un messaggio rimasto
+    // fuori dallo schermo restava a 2 spunte mentre il successivo ne aveva 3.
+    // Per le FOTO no: l'apertura è deliberata e non si deduce.
+    final read = svc.isReadByRecipient(m.id) ||
+        (m.type == MessageType.text &&
+            svc.isReadUpTo(m.conversationId, m.createdAt));
     // Distinzione per CONTEGGIO di spunte (accessibile anche ai daltonici):
     //   1 spunta grigia  = in invio (il server non ha ancora confermato)
     //   2 spunte grigie  = inviato (il server ha salvato il messaggio)

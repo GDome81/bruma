@@ -117,11 +117,38 @@ class AppServices {
   /// le spunte a vicenda.
   final Map<String, Set<String>> _readByConversation = {};
 
+  /// Data del mio messaggio più RECENTE che risulta letto, per conversazione.
+  /// Serve perché l'evento di lettura nasce solo quando l'app dell'altro
+  /// DECIFRA quel messaggio, e decifra solo le bolle che costruisce: un
+  /// messaggio rimasto appena fuori dallo schermo non risultava letto nemmeno
+  /// se quelli dopo lo erano (spunte "2 poi 3", impossibili da spiegare).
+  final Map<String, DateTime> _readWatermark = {};
+
   bool isReadByRecipient(String messageId) {
     for (final ids in _readByConversation.values) {
       if (ids.contains(messageId)) return true;
     }
     return false;
+  }
+
+  /// Soglia monotòna: non torna mai indietro.
+  void setReadWatermark(String conversationId, DateTime upTo) {
+    final cur = _readWatermark[conversationId];
+    if (cur != null && !upTo.isAfter(cur)) return;
+    _readWatermark[conversationId] = upTo;
+    openEventsTick.value++;
+  }
+
+  /// Vero se l'altro ha letto qualcosa di PIÙ RECENTE di [createdAt]: allora era
+  /// in chat oltre quel punto, quindi ha visto anche i messaggi precedenti.
+  ///
+  /// Vale solo per i TESTI. Per le foto no: aprirle è un atto deliberato e
+  /// consuma un'apertura, quindi non si può dedurre — dedurlo mostrerebbe una
+  /// foto come "vista" senza che nessuno l'abbia aperta, falsando anche le
+  /// statistiche di visualizzazione.
+  bool isReadUpTo(String conversationId, DateTime createdAt) {
+    final wm = _readWatermark[conversationId];
+    return wm != null && !createdAt.isAfter(wm);
   }
 
   void setReadReceipts(String conversationId, Iterable<String> ids) {
@@ -954,6 +981,7 @@ class AppServices {
       _decryptedText.clear();
       _openedPhotoCache.clear();
       _readByConversation.clear();
+      _readWatermark.clear();
     }
   }
 
