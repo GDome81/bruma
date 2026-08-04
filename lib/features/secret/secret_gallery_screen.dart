@@ -192,6 +192,26 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen>
             'Tocca "scopri" per vedere le anteprime.',
       );
     }
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          color: cs.surfaceContainerHighest,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Text(
+            'Tocca una foto per scoprirla, tocca di nuovo per coprirla · '
+            '⤢ per il pieno schermo · tieni premuto per le azioni.',
+            style: TextStyle(
+                fontSize: 11.5, height: 1.3, color: cs.onSurfaceVariant),
+          ),
+        ),
+        Expanded(child: _mineGrid(d)),
+      ],
+    );
+  }
+
+  Widget _mineGrid(_Data d) {
     return GridView.builder(
       padding: const EdgeInsets.all(3),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -431,16 +451,30 @@ class _MineTile extends StatefulWidget {
 class _MineTileState extends State<_MineTile> {
   Uint8List? _bytes;
 
+  /// Anteprima aperta per QUESTA foto. Parte dall'interruttore globale
+  /// ("scopri tutte") ma poi si comanda con un tap sulla singola cella.
+  bool _show = false;
+
   @override
   void initState() {
     super.initState();
-    if (widget.revealed) _load();
+    _show = widget.revealed;
+    if (_show) _load();
   }
 
   @override
   void didUpdateWidget(covariant _MineTile old) {
     super.didUpdateWidget(old);
-    if (widget.revealed && !old.revealed) _load();
+    // L'interruttore globale ha la precedenza: allinea la cella.
+    if (widget.revealed != old.revealed) {
+      _show = widget.revealed;
+      if (_show) _load();
+    }
+  }
+
+  void _toggle() {
+    setState(() => _show = !_show);
+    if (_show) _load();
   }
 
   Future<void> _load() async {
@@ -463,9 +497,11 @@ class _MineTileState extends State<_MineTile> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final showImage = widget.revealed && _bytes != null;
+    final showImage = _show && _bytes != null;
     return GestureDetector(
-      onTap: showImage ? _open : null,
+      // Tap: apre/chiude l'anteprima nella cella. Il pieno schermo si raggiunge
+      // col tastino "espandi" che compare quando l'anteprima è aperta.
+      onTap: _toggle,
       onLongPress: widget.onLongPress,
       child: Stack(
         fit: StackFit.expand,
@@ -480,10 +516,35 @@ class _MineTileState extends State<_MineTile> {
             Container(
               color: cs.surfaceContainerHighest,
               child: Center(
-                child: Icon(
-                    widget.revealed ? Icons.hourglass_empty : Icons.lock,
-                    color: cs.onSurfaceVariant,
-                    size: 22),
+                child: _show
+                    // Anteprima chiesta ma byte non ancora pronti.
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.lock,
+                        color: cs.onSurfaceVariant, size: 22),
+              ),
+            ),
+          // "Espandi" → pieno schermo. Solo con l'anteprima aperta.
+          // Material+InkWell e non IconButton: quest'ultimo ha una dimensione
+          // minima di 48px che in una cella di griglia si prende troppo spazio.
+          if (showImage)
+            Positioned(
+              top: 2,
+              right: 2,
+              child: Material(
+                color: Colors.black54,
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: _open,
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.open_in_full,
+                        size: 15, color: Colors.white),
+                  ),
+                ),
               ),
             ),
           // Stato: quante aperture restano ALL'ALTRO (o revocata/scaduta).
