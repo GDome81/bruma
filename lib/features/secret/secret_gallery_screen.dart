@@ -227,11 +227,38 @@ class _SecretGalleryScreenState extends State<SecretGalleryScreen>
                 'limiti le trovi nella Galleria della chat.',
       );
     }
+    final cs = Theme.of(context).colorScheme;
     return ListView.separated(
-      itemCount: d.received.length,
+      // +1 per la riga di spiegazione in cima: il tieni-premuto non si scopre
+      // da solo, e senza indicazioni non è chiaro cosa si possa fare qui.
+      itemCount: d.received.length + 1,
       separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (_, i) {
-        final m = d.received[i];
+      itemBuilder: (_, index) {
+        if (index == 0) {
+          return Container(
+            color: cs.surfaceContainerHighest,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: Row(
+              children: [
+                Icon(Icons.lock, size: 16, color: cs.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Foto che puoi ancora aprire, coperte perché aprirle '
+                    'consuma una delle tue aperture.\n'
+                    'Tocca "Apri" per vederla · tieni premuto per andare al '
+                    'messaggio in chat.',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.35,
+                        color: cs.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        final m = d.received[index - 1];
         return _ReceivedTile(
           key: ValueKey(m.id),
           message: m,
@@ -564,91 +591,57 @@ class _ReceivedTileState extends State<_ReceivedTile> {
     final a = widget.access;
     final cached = _cached;
     final expires = a?.access.expiresAt;
-    // NB: layout esplicito e non ListTile+trailing. Mettendo i pulsanti nel
-    // `trailing` questi si prendevano tutta la larghezza e il testo veniva
-    // schiacciato a un carattere per riga.
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: cached != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: WatermarkOverlay(
-                      dense: true,
-                      child: Image.memory(cached, fit: BoxFit.cover),
-                    ),
-                  )
-                : Container(
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(Icons.lock, color: cs.onSurfaceVariant),
-                  ),
-          ),
-          const SizedBox(width: 12),
-          // Expanded: il testo prende lo spazio che resta, mai meno.
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  a?.statusLabel ?? 'Foto protetta',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+    // ListTile e non una Row costruita a mano: dentro una ListView l'altezza è
+    // illimitata, e una Column (che per default si espande al massimo) diventa
+    // infinitamente alta facendo sparire il contenuto. ListTile gestisce già
+    // questi vincoli. Nel `trailing` UN SOLO widget compatto: due pulsanti si
+    // prendevano tutta la larghezza schiacciando il testo.
+    return ListTile(
+      leading: SizedBox(
+        width: 48,
+        height: 48,
+        child: cached != null
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: WatermarkOverlay(
+                  dense: true,
+                  child: Image.memory(cached, fit: BoxFit.cover),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  [
-                    formatTimestamp(widget.message.createdAt),
-                    if (expires != null) 'scade ${formatTimestamp(expires)}',
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 12, color: cs.onSurfaceVariant),
+              )
+            : Container(
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (_opening)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2)),
-            )
-          else ...[
-            FilledButton.tonal(
+                child: Icon(Icons.lock, color: cs.onSurfaceVariant),
+              ),
+      ),
+      title: Text(
+        formatTimestamp(widget.message.createdAt),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        [
+          a?.statusLabel ?? 'Foto protetta',
+          if (expires != null) 'scade ${formatTimestamp(expires)}',
+        ].join(' · '),
+        maxLines: 2,
+        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+      ),
+      trailing: _opening
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : FilledButton.tonal(
               onPressed: _open,
               child: Text(cached != null ? 'Rivedi' : 'Apri'),
             ),
-            // Menu compatto: un secondo pulsante a tutta larghezza era ciò che
-            // rubava lo spazio al testo.
-            PopupMenuButton<String>(
-              tooltip: 'Altro',
-              onSelected: (_) => widget.onJump(),
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'jump',
-                  child: ListTile(
-                    leading: Icon(Icons.forum_outlined),
-                    title: Text('Vai al messaggio in chat'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
+      onTap: _open,
+      // Come chiesto: tieni premuto → vai al punto della chat.
+      onLongPress: widget.onJump,
     );
   }
 }
