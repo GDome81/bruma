@@ -533,19 +533,11 @@ class _ReceivedTile extends StatefulWidget {
 class _ReceivedTileState extends State<_ReceivedTile> {
   bool _opening = false;
 
-  /// Se la foto è già stata aperta in questa sessione i byte sono in RAM:
-  /// mostrarla non costa un'altra apertura.
-  Uint8List? get _cached =>
-      AppServices.instance.cachedPhotoBytes(widget.message.id);
-
+  /// Ogni visualizzazione passa SEMPRE dal server e consuma un'apertura, come
+  /// in chat. Nessuna scorciatoia dalla cache: altrimenti si potrebbe rivedere
+  /// la foto infinite volte a costo zero e il contatore non significherebbe
+  /// nulla. Per lo stesso motivo qui non si mostra nessuna anteprima.
   Future<void> _open() async {
-    final cached = _cached;
-    if (cached != null) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ViewerScreen(bytes: cached, secure: true),
-      ));
-      return;
-    }
     final a = widget.access?.access;
     final left = a == null || a.unlimitedOpens ? null : a.remainingOpens;
     final ok = await showDialog<bool>(
@@ -569,12 +561,20 @@ class _ReceivedTileState extends State<_ReceivedTile> {
     if (ok != true || !mounted) return;
     setState(() => _opening = true);
     try {
+      // openContentBytes (non la variante con cache): passa dal server, che fa
+      // il check-and-increment e nega quando le aperture sono esaurite.
       final bytes =
-          await AppServices.instance.openPhotoBytesCached(widget.message);
+          await AppServices.instance.openContentBytes(widget.message);
       if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => ViewerScreen(bytes: bytes, secure: true),
       ));
+      // Chiuso il visualizzatore i byte in chiaro non devono restare in RAM:
+      // rivedere la foto deve costare un'altra apertura. (ViewerScreen lavora
+      // su una propria copia, che azzera a sua volta.)
+      for (var i = 0; i < bytes.length; i++) {
+        bytes[i] = 0;
+      }
       widget.onOpened(); // i contatori sono cambiati
     } catch (e) {
       if (mounted) {
@@ -590,7 +590,6 @@ class _ReceivedTileState extends State<_ReceivedTile> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final a = widget.access;
-    final cached = _cached;
     final expires = a?.access.expiresAt;
     // ListTile e non una Row costruita a mano: dentro una ListView l'altezza è
     // illimitata, e una Column (che per default si espande al massimo) diventa
@@ -598,24 +597,17 @@ class _ReceivedTileState extends State<_ReceivedTile> {
     // questi vincoli. Nel `trailing` UN SOLO widget compatto: due pulsanti si
     // prendevano tutta la larghezza schiacciando il testo.
     return ListTile(
-      leading: SizedBox(
+      // Sempre coperta: nessuna anteprima, nemmeno se la foto è stata aperta
+      // poco prima. Un'anteprima gratuita sarebbe una visualizzazione che non
+      // consuma nulla.
+      leading: Container(
         width: 48,
         height: 48,
-        child: cached != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: WatermarkOverlay(
-                  dense: true,
-                  child: Image.memory(cached, fit: BoxFit.cover),
-                ),
-              )
-            : Container(
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.lock, color: cs.onSurfaceVariant),
-              ),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(Icons.lock, color: cs.onSurfaceVariant),
       ),
       title: Text(
         formatTimestamp(widget.message.createdAt),
@@ -641,7 +633,7 @@ class _ReceivedTileState extends State<_ReceivedTile> {
               // il pulsante si prende tutta la riga (data e aperture sparivano).
               style: compactFilledStyle(),
               onPressed: _open,
-              child: Text(cached != null ? 'Rivedi' : 'Apri'),
+              child: const Text('Apri'),
             ),
       onTap: _open,
       // Come chiesto: tieni premuto → vai al punto della chat.

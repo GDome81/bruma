@@ -477,6 +477,13 @@ class AppServices {
   /// Come [openContentBytes] ma memorizza il risultato: chiamate successive per
   /// la stessa foto tornano dalla cache (niente rete, niente re-decifra). Usare
   /// solo per foto senza limiti (galleria/eco), non per contenuti a consumo.
+  /// SOLO per contenuti SENZA limiti (foto offerte in galleria) o per una foto
+  /// PROPRIA (la copia del mittente non è protetta): riusa i byte già in RAM.
+  ///
+  /// NON usarla per una foto protetta ricevuta: la cache salterebbe il
+  /// check-and-increment sul server, quindi si potrebbe rivederla infinite volte
+  /// senza consumare aperture e il contatore diventerebbe una finzione. In quel
+  /// caso serve [openContentBytes], che passa sempre dal server.
   Future<Uint8List> openPhotoBytesCached(Message m) async {
     final hit = _openedPhotoCache[m.id];
     if (hit != null) return hit;
