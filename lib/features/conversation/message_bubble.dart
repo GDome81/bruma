@@ -4,9 +4,7 @@ import 'dart:convert';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import '../../shared/emoji_config.dart';
-import '../../shared/linkified_text.dart';
+import 'package:sodium_libs/sodium_libs.dart' show SodiumException;
 
 import '../../core/app_services.dart';
 import '../../core/local_prefs.dart';
@@ -14,6 +12,9 @@ import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
 import '../../core/secure_store/favorite_notes.dart';
 import '../../core/supabase/key_request_exception.dart';
+import '../../shared/emoji_config.dart';
+import '../../shared/favorite_icon.dart';
+import '../../shared/linkified_text.dart';
 import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
 import '../favorites/favorites_screen.dart';
@@ -502,11 +503,20 @@ Widget _reactionsRow(
 /// significa che il contenuto è cifrato per un'ALTRA identità (es. hai aperto
 /// l'app su un nuovo dispositivo e rigenerato le chiavi).
 String _friendlyDecryptError(Object e) {
-  final s = e.toString().toLowerCase();
-  if (s.contains('sodium') || s.contains('decrypt') || s.contains('mac')) {
+  // Si controlla il TIPO, non il testo dell'eccezione. Cercare "sodium",
+  // "decrypt" o "mac" dentro un toString() qualunque faceva passare per
+  // "problema di identità" errori che non lo erano affatto (una qualsiasi
+  // eccezione con quelle lettere nel messaggio), mandando l'utente a caccia
+  // del problema sbagliato.
+  if (e is SodiumException) {
     return 'Contenuto cifrato per un\'altra identità: '
         'non apribile su questo dispositivo.';
   }
+  // In debug stampa l'errore vero: altrimenti la causa reale si perde.
+  assert(() {
+    debugPrint('Bruma: decifratura fallita (${e.runtimeType}): $e');
+    return true;
+  }());
   return 'Errore: $e';
 }
 
@@ -607,7 +617,7 @@ Future<void> showMessageActions(
               },
             ),
             ListTile(
-              leading: Icon(isFav ? Icons.star : Icons.star_border,
+              leading: Icon(isFav ? favoriteIconOn : favoriteIconOff,
                   color: isFav ? Colors.amber : null),
               title: Text(
                   isFav ? 'Rimuovi dai preferiti' : 'Salva nei preferiti'),
@@ -819,7 +829,7 @@ Widget _footer(BuildContext context, Message message, {required bool mine}) {
     mainAxisSize: MainAxisSize.min,
     children: [
       if (LocalPrefs.isFavorite(message.id)) ...[
-        const Icon(Icons.star, size: 13, color: Colors.amber),
+        const Icon(favoriteIconOn, size: 13, color: favoriteColor),
         const SizedBox(width: 4),
       ],
       if (message.isEdited) ...[
@@ -1224,6 +1234,7 @@ class _PhotoBubbleState extends State<_PhotoBubble> {
         bytes: bytes,
         expiresAt: _expiresAt,
         secure: _protected,
+        message: widget.message, // abilita la 🌙 preferiti
       ),
     ));
   }

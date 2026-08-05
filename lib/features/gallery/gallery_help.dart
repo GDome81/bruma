@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../shared/favorite_icon.dart';
+
 /// Testi della guida sulle gallerie, in UN SOLO posto: li usano sia i pannelli
 /// ⓘ dentro le schermate sia la sezione del tutorial, così non divergono.
 class GalleryHelp {
@@ -28,7 +30,7 @@ class GalleryHelp {
           'quante ne restano a te). Menu ⋮ → Contenuti a tempo.',
     ),
     (
-      Icons.star_border,
+      favoriteIconOff,
       'Preferiti — "cosa voglio ritrovare"',
       'Messaggi e foto che hai segnato, con una nota facoltativa per '
           'ricordarti cosa erano: utile per i contenuti protetti che non si '

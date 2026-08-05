@@ -13,6 +13,7 @@ import '../../core/app_services.dart';
 import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../shared/emoji_config.dart';
+import '../../shared/favorite_icon.dart';
 import '../../shared/widgets.dart';
 import '../camera/camera_screen.dart';
 import '../favorites/favorites_screen.dart';
@@ -422,12 +423,18 @@ class _ConversationScreenState extends State<ConversationScreen>
   /// ha riallineato l'identità mentre la chat era aperta). Fallback a
   /// widget.other se il fetch fallisce.
   Future<Profile> _freshRecipient() async {
-    try {
-      final p =
-          await AppServices.instance.profiles.getProfile(widget.other.id);
-      if (p != null && p.publicKey.isNotEmpty) return p;
-    } catch (_) {}
-    return widget.other;
+    // NIENTE fallback silenzioso sulla chiave in cache: se il destinatario ha
+    // riallineato l'identità, cifrare con quella vecchia produce un messaggio
+    // che lui NON potrà MAI aprire — e non c'è modo di accorgersene dopo.
+    // Meglio fallire l'invio con un messaggio chiaro: si riprova.
+    final p = await AppServices.instance.profiles
+        .getProfile(widget.other.id)
+        .timeout(const Duration(seconds: 10));
+    if (p == null || p.publicKey.isEmpty) {
+      throw Exception(
+          'Chiave del destinatario non disponibile: riprova fra un momento.');
+    }
+    return p;
   }
 
   Future<void> _sendText() async {
@@ -911,7 +918,7 @@ class _ConversationScreenState extends State<ConversationScreen>
                 _menuItem('search', Icons.search, 'Cerca nella chat'),
                 _menuItem('gallery', Icons.collections_outlined, 'Galleria'),
                 _menuItem('stats', Icons.bar_chart, 'Statistiche'),
-                _menuItem('favorites', Icons.star_border, 'Preferiti'),
+                _menuItem('favorites', favoriteIconOff, 'Preferiti'),
                 _menuItem('secret', Icons.lock_clock, 'Contenuti a tempo'),
                 _menuItem(
                     'protection', Icons.shield_outlined, 'Protezione'),

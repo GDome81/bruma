@@ -490,7 +490,8 @@ class _MineTileState extends State<_MineTile> {
     final b = _bytes;
     if (b == null) return;
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ViewerScreen(bytes: b, secure: true),
+      builder: (_) =>
+          ViewerScreen(bytes: b, secure: true, message: widget.message),
     ));
   }
 
@@ -628,7 +629,8 @@ class _ReceivedTileState extends State<_ReceivedTile> {
           await AppServices.instance.openContentBytes(widget.message);
       if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ViewerScreen(bytes: bytes, secure: true),
+        builder: (_) =>
+            ViewerScreen(bytes: bytes, secure: true, message: widget.message),
       ));
       // Chiuso il visualizzatore i byte in chiaro non devono restare in RAM:
       // rivedere la foto deve costare un'altra apertura. (ViewerScreen lavora

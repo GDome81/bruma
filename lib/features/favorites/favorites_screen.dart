@@ -4,6 +4,7 @@ import '../../core/app_services.dart';
 import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_store/favorite_notes.dart';
+import '../../shared/favorite_icon.dart';
 import '../../shared/widgets.dart';
 
 /// Dialog per aggiungere/modificare la nota promemoria di un preferito.
@@ -156,7 +157,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           final items = snap.data ?? [];
           if (items.isEmpty) {
             return const EmptyView(
-              icon: Icons.star_border,
+              icon: favoriteIconOff,
               title: 'Nessun preferito',
               subtitle:
                   'Tieni premuto un messaggio e scegli "Salva nei preferiti". '
@@ -281,7 +282,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           const PopupMenuItem(
             value: 'remove',
             child: ListTile(
-                leading: Icon(Icons.star, color: Colors.amber),
+                leading: Icon(favoriteIconOn, color: favoriteColor),
                 title: Text('Rimuovi dai preferiti'),
                 contentPadding: EdgeInsets.zero),
           ),

@@ -23,6 +23,7 @@ import 'supabase/auth_repository.dart';
 import 'supabase/contacts_repository.dart';
 import 'supabase/conversations_repository.dart';
 import 'supabase/gallery_repository.dart';
+import 'supabase/key_request_exception.dart';
 import 'supabase/messages_repository.dart';
 import 'supabase/profile_repository.dart';
 import 'supabase/requests_repository.dart';
@@ -456,7 +457,7 @@ class AppServices {
   ///
   /// ATTENZIONE: per i contenuti protetti ogni chiamata consuma un'apertura.
   Future<Uint8List> openContentBytes(Message m) async {
-    final wrapped = await access.requestKey(m.id);
+    final wrapped = await _requestKeyWithRetry(m.id);
     final key = crypto.unwrapKey(wrapped, identity);
     try {
       if (m.type == MessageType.text) {
@@ -467,6 +468,39 @@ class AppServices {
       }
     } finally {
       key.dispose();
+    }
+  }
+
+  /// Chiede la chiave ritentando SOLO su `not_found`.
+  ///
+  /// Perché serve: l'invio scrive il messaggio e le righe di accesso (che
+  /// contengono le chiavi) in DUE operazioni separate, non transazionali. Il
+  /// realtime scatta sulla prima, quindi il destinatario può chiedere la chiave
+  /// prima che esista — un intero giro di rete di finestra — e vedeva
+  /// "Contenuto non disponibile" su un messaggio appena arrivato, che poi
+  /// funzionava riaprendo la chat.
+  ///
+  /// Ritentare è gratis e sicuro: `request_key` solleva `not_found` PRIMA di
+  /// registrare qualsiasi apertura, quindi nessun contatore viene consumato e
+  /// nessun evento di lettura viene creato dai tentativi a vuoto. Gli altri
+  /// esiti (revocato, scaduto, esaurito) NON si ritentano: sono definitivi.
+  Future<String> _requestKeyWithRetry(String messageId) async {
+    const delays = [
+      Duration(milliseconds: 350),
+      Duration(milliseconds: 700),
+      Duration(milliseconds: 1400),
+    ];
+    var attempt = 0;
+    while (true) {
+      try {
+        return await access.requestKey(messageId);
+      } on KeyRequestException catch (e) {
+        if (e.reason != KeyDenialReason.notFound || attempt >= delays.length) {
+          rethrow;
+        }
+        await Future<void>.delayed(delays[attempt]);
+        attempt++;
+      }
     }
   }
 

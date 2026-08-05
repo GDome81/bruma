@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/app_services.dart';
+import '../../core/local_prefs.dart';
 import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
+import '../../core/secure_store/favorite_notes.dart';
+import '../../shared/favorite_icon.dart';
 import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
+import '../favorites/favorites_screen.dart' show editFavoriteNote;
 import 'gallery_help.dart';
 
 /// Galleria per-chat: le foto "senza limiti" che l'utente ha salvato in questa
@@ -374,6 +378,28 @@ class _GalleryViewerScreenState extends State<GalleryViewerScreen> {
     return KeyEventResult.ignored;
   }
 
+  /// 🌙 rapida sulla foto attualmente visibile nello scorrimento.
+  Widget _favoriteAction(Message m) {
+    final fav = LocalPrefs.isFavorite(m.id);
+    return IconButton(
+      tooltip: fav ? 'Togli dai preferiti' : 'Salva nei preferiti',
+      icon: Icon(fav ? favoriteIconOn : favoriteIconOff,
+          color: fav ? favoriteColor : Colors.white),
+      onPressed: () async {
+        if (fav) {
+          await AppServices.instance
+              .setFavorite(m.conversationId, m.id, false);
+          await FavoriteNotes.set(m.id, null);
+          if (mounted) setState(() {});
+          return;
+        }
+        await AppServices.instance.setFavorite(m.conversationId, m.id, true);
+        if (mounted) setState(() {});
+        if (mounted) await editFavoriteNote(context, m.id);
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final msgs = widget.messages;
@@ -388,6 +414,7 @@ class _GalleryViewerScreenState extends State<GalleryViewerScreen> {
         foregroundColor: Colors.white,
         title: Text(
             '${_index + 1} / ${msgs.length}  ·  ${mine ? 'Tu' : widget.otherName}'),
+        actions: [_favoriteAction(m)],
       ),
       body: Focus(
         autofocus: true,

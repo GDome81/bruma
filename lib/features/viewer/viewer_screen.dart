@@ -3,9 +3,15 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../core/app_services.dart';
+import '../../core/local_prefs.dart';
+import '../../core/models/models.dart';
 import '../../core/secure_screen.dart';
+import '../../core/secure_store/favorite_notes.dart';
+import '../../shared/favorite_icon.dart';
 import '../../shared/watermark.dart';
 import '../../shared/widgets.dart';
+import '../favorites/favorites_screen.dart' show editFavoriteNote;
 
 /// Visualizzatore fullscreen di una foto GIÀ decifrata (byte in RAM). Non
 /// richiede la chiave al server: fa parte della stessa "sessione" di apertura
@@ -20,11 +26,18 @@ class ViewerScreen extends StatefulWidget {
     required this.bytes,
     this.expiresAt,
     this.secure = false,
+    this.message,
   });
 
   final Uint8List bytes;
   final DateTime? expiresAt;
   final bool secure;
+
+  /// Se valorizzato compare la 🌙 per salvare nei preferiti (con nota) senza
+  /// uscire dalla foto. Vale anche per i contenuti a visibilità limitata: il
+  /// preferito è un segnalibro locale con una nota, quindi resta l'unico modo
+  /// di ricordarsi cos'era una foto che non si potrà più aprire.
+  final Message? message;
 
   @override
   State<ViewerScreen> createState() => _ViewerScreenState();
@@ -69,6 +82,30 @@ class _ViewerScreenState extends State<ViewerScreen> {
     super.dispose();
   }
 
+  /// 🌙 rapida: salva/togli dai preferiti senza uscire dalla foto, e alla prima
+  /// aggiunta chiede la nota — per un contenuto a visibilità limitata quella
+  /// nota è l'unico modo di ricordarsi cos'era.
+  Widget _favoriteAction(Message m) {
+    final fav = LocalPrefs.isFavorite(m.id);
+    return IconButton(
+      tooltip: fav ? 'Togli dai preferiti' : 'Salva nei preferiti',
+      icon: Icon(fav ? favoriteIconOn : favoriteIconOff,
+          color: fav ? favoriteColor : Colors.white),
+      onPressed: () async {
+        if (fav) {
+          await AppServices.instance
+              .setFavorite(m.conversationId, m.id, false);
+          await FavoriteNotes.set(m.id, null);
+          if (mounted) setState(() {});
+          return;
+        }
+        await AppServices.instance.setFavorite(m.conversationId, m.id, true);
+        if (mounted) setState(() {});
+        if (mounted) await editFavoriteNote(context, m.id);
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -78,6 +115,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
         foregroundColor: Colors.white,
         title: const Text('Foto'),
         actions: [
+          if (widget.message != null) _favoriteAction(widget.message!),
           if (widget.expiresAt != null)
             Center(
               child: Padding(
